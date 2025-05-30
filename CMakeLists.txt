@@ -66,6 +66,12 @@ project(CURL
   VERSION "${_curl_version_sem}"
   LANGUAGES C)
 
+option(USE_VCLTL "USE VCLTL" OFF)
+
+if(USE_VCLTL)
+include("VC-LTL helper for cmake.cmake")
+endif()
+
 # CMake does not recognize some targets accurately. Touch up configuration manually as a workaround.
 if(WINDOWS_STORE AND MINGW)  # mingw UWP build
   # CMake (as of v3.31.2) gets confused and applies the MSVC rc.exe command-line
