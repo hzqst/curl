@@ -7,9 +7,12 @@
 # Outputs: the same file, minus the header
 #
 
-my $f = $ARGV[0];
+use strict;
+use warnings;
 
-open(F, "<$f") or die;
+my $f = $ARGV[0] || '';
+
+open(F, "<", $f) or die;
 
 my @out;
 my $line = 0;
@@ -34,7 +37,7 @@ while(<F>) {
 }
 close(F);
 
-open(O, ">$f") or die;
+open(O, ">", $f) or die;
 for my $l (@out) {
     print O $l;
 }

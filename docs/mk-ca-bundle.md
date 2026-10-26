@@ -29,8 +29,7 @@ The default *output* name is **ca-bundle.crt**. By setting it to '-' (a single
 dash) you get the output sent to STDOUT instead of a file.
 
 The PEM format this scripts uses for output makes the result readily available
-for use by just about all OpenSSL or GnuTLS powered applications, such as curl
-and others.
+for use by OpenSSL or GnuTLS powered applications, such as curl and others.
 
 # OPTIONS
 
@@ -43,9 +42,8 @@ backup an existing version of *output*
 ## -d [name]
 
 specify which Mozilla tree to pull *certdata.txt* from (or a custom URL).
-Valid names are: **aurora**, **beta**, **central**, **Mozilla**, **nss**,
-**release** (default). They are shortcuts for which source tree to get the
-certificate data from.
+Valid names are: **autoland**, **beta**, **nss**, and **release** (default).
+They are shortcuts for which source tree to get the certificate data from.
 
 ## -f
 
@@ -71,6 +69,8 @@ print license info about *certdata.txt*
 specific information about each certificate that is stored in the original
 file as comments and using this option makes those comments get passed on to
 the output file. The meta data is not parsed in any way by mk-ca-bundle.
+
+(Added in 1.34) SHA-256 fingerprints are always included by default.
 
 ## -n
 
@@ -116,12 +116,16 @@ unlink (remove) *certdata.txt* after processing
 
 be verbose and print out processed certificate authorities
 
+## -x
+
+(Added in 1.35) Exclude list of SHA-256 fingerprints. Comma separated,
+case-insensitive, whitespace and ':' byte delimiters are ignored.
+
 # EXIT STATUS
 
 Returns 0 on success. Returns 1 if it fails to download data.
 
 # FILE FORMAT
 
-The file format used by Mozilla for this trust information is documented here:
-
-https://p11-glue.freedesktop.org/doc/storing-trust-policy/storing-trust-existing.html
+The file format used by Mozilla for this trust information is [documented
+here](https://p11-glue.github.io/p11-glue/doc/storing-trust-policy/storing-trust-existing.html).

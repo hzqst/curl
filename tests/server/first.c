@@ -21,39 +21,82 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include <stdio.h>
-#include <string.h>
 #include "first.h"
 
-int main(int argc, char **argv)
+#include <stdio.h>
+
+int main(int argc, const char *argv[])
 {
-  main_func_t main_func;
-  char *main_name;
+  entry_func_t entry_func;
+  const char *entry_name;
+  int result;
+  size_t tmp;
+
+  CURL_MSVC_CRTDBG_INIT();
+
+#ifdef _WIN32
+  if(argc == 2 && !strcmp(argv[1], "--dump-module-paths")) {
+    CURL_DUMP_MODULE_PATHS(printf);
+    return 0;
+  }
+#endif
 
   if(argc < 2) {
     fprintf(stderr, "Pass servername as first argument\n");
     return 1;
   }
 
-  main_name = argv[1];
-  main_func = NULL;
-  {
-    size_t tmp;
-    for(tmp = 0; s_mains[tmp].ptr; ++tmp) {
-      if(strcmp(main_name, s_mains[tmp].name) == 0) {
-        main_func = s_mains[tmp].ptr;
-        break;
-      }
+  entry_name = argv[1];
+  entry_func = NULL;
+  for(tmp = 0; s_entries[tmp].ptr; ++tmp) {
+    if(!strcmp(entry_name, s_entries[tmp].name)) {
+      entry_func = s_entries[tmp].ptr;
+      break;
     }
   }
 
-  if(!main_func) {
-    fprintf(stderr, "Test '%s' not found.\n", main_name);
+  if(!entry_func) {
+    fprintf(stderr, "Test '%s' not found.\n", entry_name);
     return 99;
   }
 
-  --argc;
-  ++argv;
+#ifdef _WIN32
+  if(win32_init())
+    return 2;
+#endif
 
-  return main_func(argc, argv);
+  result = entry_func(argc - 1, argv + 1);
+
+  if(serverlogfile && exit_msg)
+    logmsg("========> exit message: %s", exit_msg);
+
+  if(got_exit_signal) {
+    char port_str[11];
+    const char *location_str = port_str;
+    snprintf(port_str, sizeof(port_str), "port %hu", server_port);
+
+#ifdef USE_UNIX_SOCKETS
+    if(socket_domain == AF_UNIX)
+      location_str = server_unix_socket ? server_unix_socket
+                                        : "<unix socket not set>";
+#endif
+
+    logmsg("========> %s %s (%s pid: %ld) exits with signal (%d)",
+           socket_type, entry_name,
+           location_str, (long)our_getpid(), exit_signal);
+
+#ifndef _WIN32
+    /*
+     * To properly set the return status of the process we
+     * must raise the same signal SIGINT or SIGTERM that we
+     * caught and let the old handler take care of it.
+     */
+    raise(exit_signal);
+#endif
+  }
+
+  if(serverlogfile)
+    logmsg("========> %s quits", entry_name);
+
+  return result;
 }

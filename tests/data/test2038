@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -7,13 +8,9 @@ PEM certificate
 </keywords>
 </info>
 
-#
-# Server-side
 <reply>
 </reply>
 
-#
-# Client-side
 <client>
 <features>
 SSL
@@ -31,8 +28,6 @@ HTTPS wrong PEM pinnedpubkey but right CN
 </command>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
 <errorcode>
 90

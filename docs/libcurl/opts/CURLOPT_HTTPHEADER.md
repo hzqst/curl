@@ -55,6 +55,10 @@ without content (no data on the right side of the colon) as in `Accept:`, the
 internally used header is removed. To forcibly add a header without content
 (nothing after the colon), use the form `name;` (using a trailing semicolon).
 
+There are exceptions when suppressing headers. The `Connection:` header in
+HTTP/1.1 cannot be overridden. You can provide values for it, but should a
+request require specific ones, they are always added to your own.
+
 The headers included in the linked list **must not** be CRLF-terminated, since
 libcurl adds CRLF after each header item itself. Failure to comply with this
 might result in strange behavior. libcurl passes on the verbatim strings you
@@ -97,6 +101,16 @@ Host: is not sent at all over the wire.
 
 Tells libcurl the upload is to be done using this chunked encoding instead of
 providing the Content-Length: field in the request.
+
+## Authorization:
+
+Custom `Authorization:` headers may interfere with and cause unintended
+side-effects when combined with authentication set with CURLOPT_HTTPAUTH(3).
+
+## Proxy-Authorization:
+
+Custom `Proxy-Authorization:` headers may interfere with and cause unintended
+side-effects when combined with authentication set with CURLOPT_PROXYAUTH(3).
 
 # SPECIFIC MIME HEADERS
 
@@ -165,6 +179,7 @@ int main(void)
   struct curl_slist *list = NULL;
 
   if(curl) {
+    CURLcode result;
     curl_easy_setopt(curl, CURLOPT_URL, "https://example.com");
 
     /* add this header */
@@ -178,9 +193,10 @@ int main(void)
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
 
-    curl_easy_perform(curl);
+    result = curl_easy_perform(curl);
 
     curl_slist_free_all(list); /* free the list */
+    curl_easy_cleanup(curl);
   }
 }
 ~~~

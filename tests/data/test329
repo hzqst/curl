@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -6,9 +7,8 @@ HTTP GET
 cookies
 </keywords>
 </info>
-# Server-side
 <reply>
-<data>
+<data crlf="headers">
 HTTP/1.1 200 OK
 Date: Tue, 09 Nov 2010 14:49:00 GMT
 Server: test-server/fake
@@ -20,7 +20,7 @@ Content-Length: 4
 
 boo
 </data>
-<data2>
+<data2 crlf="headers">
 HTTP/1.1 200 OK
 Funny-head: yesyes
 Content-Length: 4
@@ -29,7 +29,6 @@ moo
 </data2>
 </reply>
 
-# Client-side
 <client>
 <file name="%LOGDIR/jar%TESTNUMBER.txt" mode="text">
 .host.foo.com	TRUE	/we/want/	FALSE	22147483647	test	no
@@ -57,9 +56,8 @@ cookies
 </features>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET /we/want/%TESTNUMBER HTTP/1.1
 Host: host.foo.com
 User-Agent: curl/%VERSION

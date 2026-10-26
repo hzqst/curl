@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 # based on test 143
 <info>
@@ -8,14 +9,12 @@ type=
 </keywords>
 </info>
 
-# Server-side
 <reply>
 <data>
 bla bla bla
 </data>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
@@ -28,12 +27,8 @@ FTP URL with type=i
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD

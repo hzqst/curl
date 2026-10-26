@@ -23,59 +23,62 @@
  ***************************************************************************/
 #include "tool_setup.h"
 
-#include <sys/stat.h>
-
-#if defined(_WIN32) && !defined(UNDER_CE)
-#  include <direct.h>
-#endif
-
-#include <curlx.h>
-
 #include "tool_dirhie.h"
 #include "tool_msgs.h"
 
-#include <memdebug.h> /* keep this as LAST include */
+#ifdef UNITTESTS
+#define toolx_mkdir(x, y) create_dir_hierarchy_trace_mkdir(x)
 
-#if defined(_WIN32) || (defined(MSDOS) && !defined(__DJGPP__))
-#  define mkdir(x,y) (mkdir)((x))
-#  ifndef F_OK
-#    define F_OK 0
-#  endif
+static struct dynbuf mkdir_results;
+
+UNITTEST struct dynbuf *create_dir_hierarchy_trace_dynres(void)
+{
+  return &mkdir_results;
+}
+
+static int create_dir_hierarchy_trace_mkdir(const char *dir)
+{
+  return !dir ||
+    curlx_dyn_add(&mkdir_results, dir) ||
+    curlx_dyn_add(&mkdir_results, "|") ? -1 : 0;
+}
+#else
+#define toolx_mkdir curlx_mkdir
 #endif
 
-static void show_dir_errno(struct GlobalConfig *global, const char *name)
+static void show_dir_errno(const char *name)
 {
   switch(errno) {
 #ifdef EACCES
   /* !checksrc! disable ERRNOVAR 1 */
   case EACCES:
-    errorf(global, "You do not have permission to create %s", name);
+    errorf("You do not have permission to create %s", name);
     break;
 #endif
 #ifdef ENAMETOOLONG
   case ENAMETOOLONG:
-    errorf(global, "The directory name %s is too long", name);
+    errorf("The directory name %s is too long", name);
     break;
 #endif
 #ifdef EROFS
   case EROFS:
-    errorf(global, "%s resides on a read-only file system", name);
+    errorf("%s resides on a read-only file system", name);
     break;
 #endif
 #ifdef ENOSPC
   case ENOSPC:
-    errorf(global, "No space left on the file system that will "
+    errorf("No space left on the file system that would "
            "contain the directory %s", name);
     break;
 #endif
 #ifdef EDQUOT
   case EDQUOT:
-    errorf(global, "Cannot create directory %s because you "
+    errorf("Cannot create directory %s because you "
            "exceeded your quota", name);
     break;
 #endif
   default:
-    errorf(global, "Error creating directory %s", name);
+    errorf("Error creating directory %s", name);
     break;
   }
 }
@@ -94,7 +97,7 @@ static void show_dir_errno(struct GlobalConfig *global, const char *name)
 #define PATH_DELIMITERS DIR_CHAR
 #endif
 
-CURLcode create_dir_hierarchy(const char *outfile, struct GlobalConfig *global)
+CURLcode create_dir_hierarchy(const char *outfile)
 {
   CURLcode result = CURLE_OK;
   size_t outlen = strlen(outfile);
@@ -107,18 +110,17 @@ CURLcode create_dir_hierarchy(const char *outfile, struct GlobalConfig *global)
     size_t seplen = strspn(outfile, PATH_DELIMITERS);
     size_t len = strcspn(&outfile[seplen], PATH_DELIMITERS);
 
-    /* the last path component is the file and it ends with a null byte */
+    /* the last path component is the file and it ends with a NUL byte */
     if(!outfile[len + seplen])
       break;
 
 #if defined(_WIN32) || defined(MSDOS)
     if(!curlx_dyn_len(&dirbuf)) {
-      /* Skip creating a drive's current directory. It may seem as though that
-         would harmlessly fail but it could be a corner case if X: did not
-         exist, since we would be creating it erroneously. eg if outfile is
-         X:\foo\bar\filename then do not mkdir X: This logic takes into
+      /* Skip creating a standalone Windows/MS-DOS drive letter 'X:', e.g.
+         if outfile is X:\foo\bar\filename. Do create drive-relative
+         directories e.g. in outfile X:foo\bar\filename. This logic takes into
          account unsupported drives !:, 1:, etc. */
-      if(len > 1 && (outfile[1]==':'))
+      if(len == 2 && (outfile[1] == ':'))
         skip = TRUE;
     }
 #endif
@@ -130,9 +132,9 @@ CURLcode create_dir_hierarchy(const char *outfile, struct GlobalConfig *global)
 
     /* Create directory. Ignore access denied error to allow traversal. */
     /* !checksrc! disable ERRNOVAR 1 */
-    if(!skip && (-1 == mkdir(curlx_dyn_ptr(&dirbuf), (mode_t)0000750)) &&
+    if(!skip && (toolx_mkdir(curlx_dyn_ptr(&dirbuf), (mode_t)0000750) == -1) &&
        (errno != EACCES) && (errno != EEXIST)) {
-      show_dir_errno(global, curlx_dyn_ptr(&dirbuf));
+      show_dir_errno(curlx_dyn_ptr(&dirbuf));
       result = CURLE_WRITE_ERROR;
       break; /* get out of loop */
     }

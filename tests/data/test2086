@@ -1,12 +1,13 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 HTTP
 IPv6
+libtest
 </keywords>
 </info>
 
-# Server-side
 <reply>
 <data nocheck="yes">
 HTTP/1.1 200 OK
@@ -18,7 +19,6 @@ Content-Length: 0
 </data>
 </reply>
 
-# Client-side
 <client>
 <features>
 http
@@ -32,7 +32,7 @@ http-ipv6
 Pre-request callback for HTTP IPv6
 </name>
 <tool>
-libprereq
+lib2082
 </tool>
 
 <command>
@@ -44,7 +44,6 @@ MSYS2_ARG_CONV_EXCL=*
 </setenv>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
 <stripfile>
 s/^Local port = \d+/Local port = stripped/

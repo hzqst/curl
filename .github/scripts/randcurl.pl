@@ -18,6 +18,9 @@
 # directory where it runs.
 #
 
+use strict;
+use warnings;
+
 my $curl = "../src/curl";
 my $url = "localhost:7777"; # not listening to this
 
@@ -30,6 +33,14 @@ if(!$seconds) {
     $seconds = 10;
 }
 print "Run $curl for $seconds seconds\n";
+
+my @opt;
+my %arg;
+my %uniq;
+my %allrc;
+
+my $totalargs = 0;
+my $totalcmds = 0;
 
 my $counter = 0xabcdef + time();
 sub getnum {
@@ -50,7 +61,7 @@ sub storedata {
 }
 
 sub getoptions {
-    my @all = `$curl --help all`;
+    my @all = qx($curl --help all);
     for my $o (@all) {
         chomp $o;
         if($o =~ /^ -(.), --([^ ]*) (.*)/) {
@@ -64,25 +75,25 @@ sub getoptions {
 
 # this adds a fake randomly generated command line option
 sub addarg {
-    my $nice = "abcdefhijklmnopqrstuvwqxyz".
-        "ABCDEFHIJKLMNOPQRSTUVWQXYZ".
+    my $nice = "abcdefhijklmnopqrstuvwqxyz" .
+        "ABCDEFHIJKLMNOPQRSTUVWQXYZ" .
         "0123456789-";
     my $len = getnum(20) + 2;
     my $o;
-    for (1 .. $len) {
+    for(1 .. $len) {
         $o .= substr($nice, getnum(length($nice)), 1);
     }
     return "--$o";
 }
 
 sub randarg {
-    my $nice = "abcdefhijklmnopqrstuvwqxyz".
-        "ABCDEFHIJKLMNOPQRSTUVWQXYZ".
-        "0123456789".
+    my $nice = "abcdefhijklmnopqrstuvwqxyz" .
+        "ABCDEFHIJKLMNOPQRSTUVWQXYZ" .
+        "0123456789" .
         ",-?#$%!@ ";
     my $len = getnum(20);
-    my $o;
-    for (1 .. $len) {
+    my $o = '';
+    for(1 .. $len) {
         $o .= substr($nice, getnum(length($nice)), 1);
     }
     return "\'$o\'";
@@ -105,14 +116,13 @@ my %commonrc = (
     '26' => 1,
     );
 
-
 sub runone {
     my $a;
     my $nargs = getnum(60) + 1;
 
     $totalargs += $nargs;
     $totalcmds++;
-    for (1 .. $nargs) {
+    for(1 .. $nargs) {
         my $o = getnum($nopts);
         my $option = $opt[$o];
         my $ar = "";
@@ -132,7 +142,7 @@ sub runone {
         $a .= " ".addarg();
     }
 
-    my $cmd="$curl$a $url";
+    my $cmd = "$curl$a $url";
 
     my $rc = system("$cmd >curl-output 2>&1 </dev/null -M 0.1") >> 8;
     #my $rc = system("valgrind -q $cmd >/dev/null 2>&1 </dev/null -M 0.1") >> 8;
@@ -144,7 +154,7 @@ sub runone {
         print "CMD: $cmd\n";
         print "RC: $rc\n";
         print "== curl-output == \n";
-        open(D, "<curl-output");
+        open(D, "<", 'curl-output');
         my @out = <D>;
         print @out;
         close(D);
@@ -156,14 +166,15 @@ sub runconfig {
     my $a;
     my $nargs = getnum(80) + 1;
 
-    open(C, ">config");
+    open(C, ">", 'config');
 
     $totalargs += $nargs;
     $totalcmds++;
-    for (1 .. $nargs) {
+    for(1 .. $nargs) {
         my $o = getnum($nopts);
         my $option = $opt[$o];
         my $ar = "";
+        $uniq{$option} = 0 if(!exists $uniq{$option});
         $uniq{$option}++;
         if($arg{$option}) {
             $ar = " ".randarg();
@@ -183,7 +194,7 @@ sub runconfig {
     print C "$a\n";
     close(C);
 
-    my $cmd="$curl -K config $url";
+    my $cmd = "$curl -K config $url";
 
     my $rc = system("$cmd >curl-output 2>&1 </dev/null -M 0.1") >> 8;
 
@@ -193,12 +204,12 @@ sub runconfig {
         print "CMD: $cmd\n";
         print "RC: $rc\n";
         print "== config == \n";
-        open(D, "<config");
+        open(D, "<", 'config');
         my @all = <D>;
         print @all;
         close(D);
         print "\n== curl-output == \n";
-        open(D, "<curl-output");
+        open(D, "<", 'curl-output');
         my @out = <D>;
         print @out;
         close(D);
@@ -207,7 +218,7 @@ sub runconfig {
 }
 
 # run curl command lines using -K
-my $end = time() + $seconds/2;
+my $end = time() + $seconds / 2;
 my $c = 0;
 print "Running command lines\n";
 do {
@@ -217,7 +228,7 @@ do {
 print "$c command lines\n";
 
 # run curl command lines
-$end = time() + $seconds/2;
+$end = time() + $seconds / 2;
 $c = 0;
 print "Running config lines\n";
 do {
@@ -231,10 +242,10 @@ print "Recorded exit codes:\n";
 for my $rc (keys %allrc) {
     printf " %2d: %d times\n", $rc, $allrc{$rc};
 }
-printf "Number or command lines tested:\n".
+printf "Number or command lines tested:\n" .
     " $totalcmds (%.1f/second)\n", $totalcmds/$seconds;
-printf "Number or command line options tested:\n".
+printf "Number or command line options tested:\n" .
     " $totalargs (average %.1f per command line)\n",
     $totalargs/$totalcmds;
-printf "Number or different options tested:\n".
+printf "Number or different options tested:\n" .
     " %u out of %u\n", scalar(keys %uniq), $nopts;

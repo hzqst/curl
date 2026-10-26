@@ -21,48 +21,51 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "curlcheck.h"
+#include "unitcheck.h"
 
-/* copied from urlapi.c */
-extern int dedotdotify(const char *input, size_t clen, char **out);
-
-#include "memdebug.h"
-
-static CURLcode unit_setup(void)
+static CURLcode test_unit1395(const char *arg)
 {
-  return CURLE_OK;
-}
-
-static void unit_stop(void)
-{
-
-}
-
-struct dotdot {
-  const char *input;
-  const char *output;
-};
-
-UNITTEST_START
+  UNITTEST_BEGIN_SIMPLE
 
   unsigned int i;
   int fails = 0;
-  const struct dotdot pairs[] = {
+
+  struct dotdot {
+    const char *input;
+    const char *output;
+  };
+
+  static const struct dotdot pairs[] = {
+    { "/%2f%2e%2e%2f/../a", "/a" },
+    { "/%2f%2e%2e%2f/../", "/" },
+    { "/%2f%2e%2e%2f/.", "/%2f%2e%2e%2f/" },
+    { "/%2f%2e%2e%2f/", NULL },
+    { "/%2f%2e%2e%2f", NULL },
+    { "/%2f%2e%2e%2", NULL },
+    { "/%2f%2e%2e%", NULL },
+    { "/%2f%2e%2e", "/%2f%2e%2e" },
+    { "/%2f%2e%2", NULL },
+    { "/%2f%2e%", NULL },
+    { "/%2f%2e", "/%2f%2e" },
+    { "/%2f%2", NULL },
+    { "/%2f%", NULL },
+    { "/%2f", NULL },
+    { "/%2", NULL },
     { "%2f%2e%2e%2f/../a", "%2f%2e%2e%2f/a" },
     { "%2f%2e%2e%2f/../", "%2f%2e%2e%2f/" },
     { "%2f%2e%2e%2f/.", "%2f%2e%2e%2f/" },
-    { "%2f%2e%2e%2f/", "%2f%2e%2e%2f/" },
-    { "%2f%2e%2e%2f", "%2f%2e%2e%2f" },
-    { "%2f%2e%2e%2", "%2f%2e%2e%2" },
-    { "%2f%2e%2e%", "%2f%2e%2e%" },
+    { "%2f%2e%2e%2f/", NULL },
+    { "%2f%2e%2e%2f", NULL },
+    { "%2f%2e%2e%2", NULL },
+    { "%2f%2e%2e%", NULL },
     { "%2f%2e%2e", "%2f%2e%2e" },
-    { "%2f%2e%2", "%2f%2e%2" },
-    { "%2f%2e%", "%2f%2e%" },
+    { "%2f%2e%2", NULL },
+    { "%2f%2e%", NULL },
     { "%2f%2e", "%2f%2e" },
-    { "%2f%2", "%2f%2" },
-    { "%2f%", "%2f%" },
-    { "%2f", "%2f" },
-    { "%2", "%2" },
+    { "%2f%2", NULL },
+    { "%2f%", NULL },
+    { "%2f", NULL },
+    { "%2", NULL },
     { "%", NULL },
     { "2", NULL },
     { "e", NULL },
@@ -105,12 +108,12 @@ UNITTEST_START
     { "/1/./%2e.", "/" },
     { "/1/./../2", "/2" },
     { "/hello/1/./../2", "/hello/2" },
-    { "test/this", "test/this" },
+    { "test/this", NULL },
     { "test/this/../now", "test/now" },
-    { "/1../moo../foo", "/1../moo../foo"},
-    { "/../../moo", "/moo"},
-    { "/../../moo?", "/moo?"},
-    { "/123?", "/123?" },
+    { "/1../moo../foo", "/1../moo../foo" },
+    { "/../../moo", "/moo" },
+    { "/../../moo?", "/moo?" },
+    { "/123?", NULL },
     { "/", NULL },
     { "", NULL },
     { "/.../", "/.../" },
@@ -119,6 +122,26 @@ UNITTEST_START
     { "/moo/..", "/" },
     { "/..", "/" },
     { "/.", "/" },
+    { "////../a", "///a" },
+    { "/../../../../../../", "/" },
+    { "/..//..//", "//" },
+    { "/.config/../ssh", "/ssh" },
+    { "/..config/..", "/" },
+    { "/.../a", "/.../a" },
+    { "/a/%2E%2e/b", "/b" },
+    { "/a/%2e./b", "/b" },
+    { "/a/.%2e/b", "/b" },
+    { "/%2f..%2f", NULL },
+    { "/a/b/.", "/a/b/" },
+    { "/a/b/..", "/a/" },
+    { "well-known", NULL },
+    { ".well-known", NULL },
+    { "..well-known", NULL },
+    { "...well-known", NULL },
+    { "....well-known", NULL },
+    { "%2ewell-known", NULL },
+    { "%2Ewell-known", NULL },
+    { "../.well-known", ".well-known" },
   };
 
   for(i = 0; i < CURL_ARRAYSIZE(pairs); i++) {
@@ -143,9 +166,10 @@ UNITTEST_START
     }
     else
       curl_mfprintf(stderr, "Test %u: OK\n", i);
-    free(out);
+    curlx_free(out);
   }
 
   fail_if(fails, "output mismatched");
 
-UNITTEST_STOP
+  UNITTEST_END_SIMPLE
+}

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -7,14 +8,12 @@ APPE
 Resume
 </keywords>
 </info>
-# Server-side
 <reply>
 <size>
 17
 </size>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
@@ -26,18 +25,14 @@ FTP PASV upload resume from end of file
 ftp://%HOSTIP:%FTPPORT/%TESTNUMBER -T %LOGDIR/upload%TESTNUMBER -C -
 </command>
 <file name="%LOGDIR/upload%TESTNUMBER">
-this is the *****cr@p******** that we're gonna upload
+this is the *****cr@p******** that we are gonna upload
 
 worx?
 </file>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD
@@ -48,7 +43,7 @@ APPE %TESTNUMBER
 QUIT
 </protocol>
 <upload>
-cr@p******** that we're gonna upload
+cr@p******** that we are gonna upload
 
 worx?
 </upload>

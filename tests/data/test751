@@ -1,7 +1,9 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 MULTI
+libtest
 </keywords>
 </info>
 <reply>
@@ -9,25 +11,18 @@ MULTI
 </data>
 </reply>
 
-# Client-side
 <client>
-<server>
-none
-</server>
-# tool is what to use instead of 'curl'
-<tool>
-lib%TESTNUMBER
-</tool>
 
 <name>
 multi - add many easy handles
 </name>
-<command>
-</command>
-</file>
 </client>
 
-# Verify data after the test has been "shot"
+# 1000 easy handles needs memory
 <verify>
+<limits>
+Maximum allocated: 6000000
+Allocations: 7000
+</limits>
 </verify>
 </testcase>

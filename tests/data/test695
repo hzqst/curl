@@ -1,10 +1,11 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 MIME
+libtest
 </keywords>
 </info>
-# Server-side
 <reply>
 <data nocheck="yes">
 HTTP/1.0 200 OK swsclose
@@ -16,7 +17,6 @@ blablabla
 </data>
 </reply>
 
-# Client-side
 <client>
 <features>
 Mime
@@ -24,9 +24,6 @@ Mime
 <server>
 http
 </server>
-<tool>
-lib%TESTNUMBER
-</tool>
 
 <name>
 MIME parts reuse as a child part
@@ -36,13 +33,12 @@ http://%HOSTIP:%HTTPPORT/we/want/%TESTNUMBER
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
 <strippart>
 s/^--------------------------[A-Za-z0-9]*/------------------------------/
 s/boundary=------------------------[A-Za-z0-9]*/boundary=----------------------------/
 </strippart>
-<protocol>
+<protocol crlf="yes">
 POST /we/want/%TESTNUMBER HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
 Accept: */*

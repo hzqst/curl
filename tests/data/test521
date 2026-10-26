@@ -1,13 +1,13 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 FTP
 PASV
 CURLOPT_PORT
+libtest
 </keywords>
 </info>
-#
-# Server-side
 <reply>
 <data mode="text">
 total 20
@@ -24,15 +24,10 @@ dr-xr-xr-x   5 0        1            512 Oct  1  1997 usr
 </data>
 </reply>
 
-#
-# Client-side
 <client>
 <server>
 ftp
 </server>
-<tool>
-lib%TESTNUMBER
-</tool>
 <name>
 FTP dir list PASV with CURLOPT_PORT
 </name>
@@ -41,13 +36,8 @@ ftp://%HOSTIP/%TESTNUMBER/ %FTPPORT
 </command>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER xxx
 PASS yyy
 PWD

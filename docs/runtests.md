@@ -1,11 +1,11 @@
 ---
-c: Copyright (C) Daniel Stenberg, <daniel.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Title: runtests.pl
 Section: 1
 Source: runtests
 See-also:
- - runtests.pl
+  - runtests.pl
 Added-in: 7.5
 ---
 
@@ -44,6 +44,9 @@ Features are included as keywords with the `feat:` prefix (e.g., `feat:debug`).
 Specify a feature to run only tests requiring it, or exclude tests using
 `!feat:<feature>`, like `!feat:proxy`, to disable tests which depend on that
 feature.
+
+With special keywords `!with-server` and `!without-server` you can
+exclude tests using a test server or those that are not, respectively.
 
 You can also specify keywords with a leading exclamation point and the keyword
 or phrase, like "!HTTP NTLM auth" to run all tests **except** those using this
@@ -96,6 +99,10 @@ Provide a path to a curl binary to talk to APIs (currently only CI test APIs).
 
 Display test results in automake style output (`PASS/FAIL: [number] [name]`).
 
+## `--buildinfo`
+
+Dump `buildinfo.txt`.
+
 ## `-c \<curl\>`
 
 Provide a path to a custom curl binary to run the tests with. Default is the
@@ -132,14 +139,14 @@ Force the test to run even if mentioned in DISABLED.
 
 Run the given test(s) with gdb. This is best used on a single test case and
 curl built --disable-shared. This then fires up gdb with command line set to
-run the specified test case. Simply (set a break-point and) type 'run' to
+run the specified test case. Set a break-point if needed and type 'run' to
 start.
 
 ## `-gl`
 
 Run the given test(s) with lldb. This is best used on a single test case and
 curl built --disable-shared. This then fires up lldb with command line set to
-run the specified test case. Simply (set a break-point and) type 'run' to
+run the specified test case. Set a break-point if needed and type 'run' to
 start.
 
 ## `-gw`
@@ -160,11 +167,6 @@ CPU cores is a good figure to start with, or 1.3 times if Valgrind is in use,
 or 5 times for torture tests. Enabling parallel tests is not recommended in
 conjunction with the -g option.
 
-## `-k`
-
-Keep output and log files in log/ after a test run, even if no error was
-detected. Useful for debugging.
-
 ## `-L \<file\>`
 
 Load and execute the specified file which should contain perl code. This
@@ -175,6 +177,15 @@ regression test suite.
 ## `-l`
 
 Lists all test case names.
+
+## `-m=[seconds]`
+
+Set timeout for curl commands in tests.
+
+## `--min=[count]`
+
+Set the minimum number of tests to run. This overrides the `CURL_TEST_MIN`
+environment variable, if any.
 
 ## `-n`
 
@@ -230,7 +241,15 @@ extended the test sequence.
 
 ## `--retry=[num]`
 
-Number of attempts for the whole test run to retry failed tests.
+Number of attempts for the whole test run to retry failed tests. It applies to
+tests using servers, or with keywords `flaky`, `threads`, `timing-dependent`,
+`may-retry`, or `may-retry-on-valgrind` (limited to valgrind tests).
+
+## `-S`
+
+Prints out all files in the log directory to stdout when a test case passes.
+Practical when comparing against a similar test that fails, or the same test
+failing in a different build.
 
 ## `-s`
 
@@ -251,6 +270,24 @@ script randomly discards entries to fail until the amount is **num**.
 
 The random seed initially set for this is fixed per month and can be set with
 *--seed*.
+
+## `--subset=<section>/<parts>`
+
+Tell runtests to run a subset of the available tests. The test selection is
+done first based on existing options. The list of selected tests is then
+divided into a number of *parts*. The selected *section* specifier is the
+set of tests this invoke runs. Note that both numbers must be provided and
+*section* is zero indexed so it must be smaller than *parts*.
+
+Using this option you can for example split up an identical test run into
+three separate invokes that combined run all the tests:
+
+     ./runtests.pl --subset=0/3
+     ./runtests.pl --subset=1/3
+     ./runtests.pl --subset=2/3
+
+This option works fine in combination with `-R` but consider also using
+`--seed` for that.
 
 ## `-t[num]`
 
@@ -300,7 +337,7 @@ use.
 
 The test script checks most of these by itself to determine when it is safe to
 attempt to run each test. Those which cannot be run due to failed requirements
-are simply skipped and listed at the completion of all test cases. In some
+are skipped and listed at the completion of all test cases. In some
 unusual configurations, the test script cannot make the correct determination
 for all tests. In these cases, the problematic tests can be skipped using the
 "!keyword" skip feature documented earlier.

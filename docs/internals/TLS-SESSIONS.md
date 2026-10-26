@@ -29,45 +29,45 @@ handling of session tickets. More below.
 
 ## curl's `ssl_peer_key`
 
-In order to find a ticket from a previous TLS session, curl
-needs a name for TLS sessions that uniquely identifies the peer
-it talks to.
+In order to find a ticket from a previous TLS session, curl needs a name for
+TLS sessions that uniquely identifies the peer it talks to.
 
-This name has to reflect also the various TLS parameters that can
-be configured in curl for a connection. We do not want to use
-a ticket from an different configuration. Example: when setting
-the maximum TLS version to 1.2, we do not want to reuse a ticket
-we got from a TLSv1.3 session, although we are talking to the
-same host.
+This name has to reflect also the various TLS parameters that can be
+configured in curl for a connection. We do not want to use a ticket from an
+different configuration. Example: when setting the maximum TLS version to 1.2,
+we do not want to reuse a ticket we got from a TLSv1.3 session, although we
+are talking to the same host.
 
-Internally, we call this name a `ssl_peer_key`. It is a printable
-string that carries hostname and port and any non-default TLS
-parameters involved in the connection.
+Internally, we call this name a `ssl_peer_key`. It is a printable string that
+carries hostname and port and any non-default TLS parameters involved in the
+connection.
 
 Examples:
-- `curl.se:443:CA-/etc/ssl/cert.pem:IMPL-GnuTLS/3.8.7` is a peer key for
-   a connection to `curl.se:443` using `/etc/ssl/cert.pem` as CA
-   trust anchors and GnuTLS/3.8.7 as TLS backend.
-- `curl.se:443:TLSVER-6-6:CA-/etc/ssl/cert.pem:IMPL-GnuTLS/3.8.7` is the
-   same as the previous, except it is configured to use TLSv1.2 as
+- `https:curl.se:443:KEY-V3:CA-17:/etc/ssl/cert.pem:IMPL-12:GnuTLS/3.8.7:G` is
+   a peer key for a connection to `https://curl.se:443` using
+   `/etc/ssl/cert.pem` as CA trust anchors and GnuTLS/3.8.7 as TLS backend.
+- `https:curl.se:443:KEY-V3:TLSVER-6-6:CA-17:/etc/ssl/cert.pem:IMPL-12:GnuTLS/3.8.7:G`
+   is the same as the previous, except it is configured to use TLSv1.2 as
    min and max versions.
 
-Different configurations produce different keys which is just what
-curl needs when handling SSL session tickets.
+Variable string fields use `NAME-length:value`, where the length counts bytes
+in the value, so delimiters inside a value cannot introduce another field. The
+`:G` suffix marks keys that can be used across processes; `:L` marks local
+keys. Persisted sessions exported with legacy peer keys no longer match keys
+in this format and cannot be resumed from those cache entries.
 
-One important thing: peer keys do not contain confidential information. If you
-configure a client certificate or SRP authentication with username/password,
-these are not part of the peer key.
+Different configurations produce different keys which is what curl needs when
+handling SSL session tickets.
 
-However, peer keys carry the hostnames you use curl for. They *do*
-leak the privacy of your communication. We recommend to *not* persist
-peer keys for this reason.
+One important thing: peer keys do not contain confidential information.
+
+Peer keys carry the hostnames you use curl for. They *do* leak the privacy of
+your communication. We recommend to *not* persist peer keys for this reason.
 
 **Caveat**: The key may contain filenames or paths. It does not reflect the
-*contents* in the filesystem. If you change `/etc/ssl/cert.pem` and reuse a
-previous ticket, curl might trust a server which no longer has a root
+*contents* in the file system. If you change `/etc/ssl/cert.pem` and reuse
+a previous ticket, curl might trust a server which no longer has a root
 certificate in the file.
-
 
 ## Session Cache Access
 
@@ -78,10 +78,9 @@ its own peer_key and calls into the cache. The cache then looks for a ticket
 with exactly this peer_key. Peer keys between proxy SSL filters and SSL
 filters talking through a tunnel differ, as they talk to different peers.
 
-If the connection filter wants to use a client certificate or SRP
-authentication, the cache checks those as well. If the cache peer carries
-client cert or SRP auth, the connection filter must have those with the same
-values (and vice versa).
+If the connection filter wants to use a client certificate, the cache checks
+those as well. If the cache peer carries client certs, the connection filter
+must have those with the same values (and vice versa).
 
 On a match, the connection filter gets the session ticket and feeds that to
 the TLS implementation which, on accepting it, tries to resume it for a
@@ -106,7 +105,7 @@ then configures its TLS backend and *returns* the ticket to the cache.
 
 The cache needs to treat tickets from TLSv1.2 and 1.3 differently. 1.2 tickets
 should be reused, but 1.3 tickets SHOULD NOT (RFC 8446). The session cache
-simply drops 1.3 tickets when they are returned after use, but keeps a 1.2
+drops 1.3 tickets when they are returned after use, but keeps a 1.2
 ticket.
 
 When a ticket is *put* into the cache, there is also a difference. There
@@ -121,9 +120,9 @@ concurrent connections do not reuse the same ticket.
 
 #### Privacy and Security
 
-As mentioned above, ssl peer keys are not intended for storage in a file
-system. They clearly show which hosts the user talked to. This maybe "just"
-privacy relevant, but has security implications as an attacker might find
+As mentioned above, SSL peer keys are not intended for storage in a file
+system. They clearly show which hosts the user talked to. This is not only
+privacy relevant, but also has security implications as an attacker might find
 worthy targets among your peer keys.
 
 Also, we do not recommend to persist TLSv1.2 tickets.
@@ -139,11 +138,11 @@ The salt is generated randomly for each peer key on export. The SHA256 makes
 sure that the peer key cannot be reversed and that a slightly different key
 still produces a different result.
 
-This means an attacker cannot just "grep" a session file for a particular
-entry, e.g. if they want to know if you accessed a specific host. They *can*
-however compute the SHA256 hashes for all salts in the file and find a
-specific entry. They *cannot* find a hostname they do not know. They would
-have to brute force by guessing.
+This means an attacker cannot "grep" a session file for a particular entry,
+e.g. if they want to know if you accessed a specific host. They *can* however
+compute the SHA256 hashes for all salts in the file and find a specific entry.
+They *cannot* find a hostname they do not know. They would have to brute force
+by guessing.
 
 #### Import
 

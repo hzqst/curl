@@ -1,26 +1,21 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 FTP
+libtest
 </keywords>
 </info>
 
-#
-# Server-side
 <reply>
 <data>
 </data>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
 </server>
-# tool is what to use instead of 'curl'
-<tool>
-lib%TESTNUMBER
-</tool>
 
 <name>
 Avoid redundant CWDs
@@ -30,13 +25,8 @@ ftp://%HOSTIP:%FTPPORT/
 </command>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD

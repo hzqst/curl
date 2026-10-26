@@ -9,6 +9,7 @@ See-also:
   - curl_easy_perform (3)
   - curl_easy_setopt (3)
   - curl_ws_recv (3)
+  - curl_ws_start_frame (3)
   - libcurl-ws (3)
 Protocol:
   - WS
@@ -85,9 +86,9 @@ calls.
 
 int main(void)
 {
-  const char *buffer = "PAYLOAD";
+  static const char *buffer = "PAYLOAD";
   size_t offset = 0;
-  CURLcode res = CURLE_OK;
+  CURLcode result = CURLE_OK;
   CURL *curl = curl_easy_init();
 
   curl_easy_setopt(curl, CURLOPT_URL, "wss://example.com/");
@@ -95,24 +96,25 @@ int main(void)
   /* start HTTPS connection and upgrade to WSS, then return control */
   curl_easy_perform(curl);
 
-  while(!res) {
+  while(!result) {
     size_t sent;
-    res = curl_ws_send(curl, buffer + offset, strlen(buffer) - offset, &sent,
-                       0, CURLWS_TEXT);
+    result = curl_ws_send(curl, buffer + offset,
+                          strlen(buffer) - offset, &sent,
+                          0, CURLWS_TEXT);
     offset += sent;
 
-    if(res == CURLE_OK) {
+    if(result == CURLE_OK) {
       if(offset == strlen(buffer))
         break; /* finished sending */
     }
 
-    if(res == CURLE_AGAIN)
+    if(result == CURLE_AGAIN)
       /* in real application: wait for socket here, e.g. using select() */
-      res = CURLE_OK;
+      result = CURLE_OK;
   }
 
   curl_easy_cleanup(curl);
-  return (int)res;
+  return (int)result;
 }
 ~~~
 
@@ -128,8 +130,8 @@ there can be an error message stored in the error buffer when non-zero is
 returned.
 
 Instead of blocking, the function returns **CURLE_AGAIN**. The correct
-behavior is then to wait for the socket to signal readability before calling
-this function again.
+behavior is then to wait until the socket is writable before calling
+this function again. Retry with the same data and length.
 
 Any other non-zero return value indicates an error. See the libcurl-errors(3)
 man page for the full list with descriptions.

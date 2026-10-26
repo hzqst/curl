@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -5,10 +6,8 @@ netrc
 HTTP
 </keywords>
 </info>
-#
-# Server-side
 <reply>
-<data crlf="yes">
+<data crlf="headers">
 HTTP/1.1 301 Follow this you fool
 Date: Tue, 09 Nov 2010 14:49:00 GMT
 Server: test-server/fake
@@ -22,7 +21,7 @@ Location: http://b.com/%TESTNUMBER0002
 -foo-
 </data>
 
-<data2 crlf="yes">
+<data2 crlf="headers">
 HTTP/1.1 200 OK
 Date: Tue, 09 Nov 2010 14:49:00 GMT
 Server: test-server/fake
@@ -35,7 +34,7 @@ Connection: close
 target
 </data2>
 
-<datacheck crlf="yes">
+<datacheck crlf="headers">
 HTTP/1.1 301 Follow this you fool
 Date: Tue, 09 Nov 2010 14:49:00 GMT
 Server: test-server/fake
@@ -59,8 +58,6 @@ target
 </datacheck>
 </reply>
 
-#
-# Client-side
 <client>
 <server>
 http
@@ -87,7 +84,7 @@ default
 </client>
 
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET http://a.com/ HTTP/1.1
 Host: a.com
 Authorization: Basic %b64[alice:alicespassword]b64%

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -8,7 +9,6 @@ cookies
 </keywords>
 </info>
 
-# Server-side
 <reply>
 <data>
 HTTP/1.1 301 Moved
@@ -50,7 +50,6 @@ If this is received, the location following worked
 </datacheck>
 </reply>
 
-# Client-side
 <client>
 <server>
 http
@@ -67,9 +66,8 @@ proxy
 </features>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET http://%HOSTIP:%HTTPPORT/want/%TESTNUMBER HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
 User-Agent: curl/%VERSION

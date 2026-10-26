@@ -40,7 +40,7 @@ use serverhelp qw(
     );
 
 my $verbose = 0;     # set to 1 for debugging
-my $port = 8990;     # just a default
+my $port = 8990;     # a default
 my $unix_socket;     # location to place a listening Unix socket
 my $ipvnum = 4;      # default IP version of http server
 my $idnum = 1;       # default http server instance number
@@ -56,7 +56,7 @@ my $gopher = 0;
 
 my $flags  = "";
 my $path   = '.';
-my $logdir = $path .'/log';
+my $logdir = $path . '/log';
 my $piddir;
 
 while(@ARGV) {
@@ -140,7 +140,7 @@ while(@ARGV) {
         $verbose = 1;
     }
     else {
-        print STDERR "\nWarning: http-server.pl unknown parameter: $ARGV[0]\n";
+        print STDERR "\nWarning: http-server.pl unknown parameter: '$ARGV[0]'\n";
     }
     shift @ARGV;
 }
@@ -168,24 +168,25 @@ if(!$logfile) {
     $logfile = server_logfilename($logdir, $proto, $ipvnum, $idnum);
 }
 
-$flags .= "--pidfile \"$pidfile\" ".
-    "--cmdfile \"$cmdfile\" ".
-    "--logfile \"$logfile\" ".
-    "--logdir \"$logdir\" ".
+$flags .= "--pidfile \"$pidfile\" " .
+    "--cmdfile \"$cmdfile\" " .
+    "--logfile \"$logfile\" " .
+    "--logdir \"$logdir\" " .
     "--portfile \"$portfile\" ";
 $flags .= "--gopher " if($gopher);
 $flags .= "--connect $connect " if($connect);
 $flags .= "--keepalive $keepalive_secs " if($keepalive_secs);
 if($ipvnum eq 'unix') {
     $flags .= "--unix-socket '$unix_socket' ";
-} else {
+}
+else {
     $flags .= "--ipv$ipvnum --port $port ";
 }
 $flags .= "--srcdir \"$srcdir\"";
 
 if($verbose) {
-    print STDERR "RUN: ".server_exe('sws')." $flags\n";
+    print STDERR "RUN: " . server_exe('sws') . " $flags\n";
 }
 
 $| = 1;
-exec("exec ".server_exe('sws')." $flags");
+exec("exec " . server_exe('sws') . " $flags");

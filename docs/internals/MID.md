@@ -27,16 +27,16 @@ An `mid` is an `unsigned int`. There are two reserved values:
   this value. They get it assigned again when removed from
   a multi handle.
 
-This makes potential range of `mid`s from `1` to `UINT_MAX - 1` *inside
-the same multi handle at the same time*. However, the `multi->xfers` table
-reuses `mid` values from previous transfers that have been removed.
+This makes potential range of `mid`s from `1` to `UINT_MAX - 1` *inside the
+same multi handle at the same time*. The `multi->xfers` table reuses `mid`
+values from previous transfers that have been removed.
 
 `multi->xfers` is created with an initial capacity. At the time of this
 writing that is `16` for "multi_easy" handles (used in `curl_easy_perform()`
 and `512` for multi handles created with `curl_multi_init()`.
 
 The first added easy handle gets `mid == 1` assigned. The second one receives `2`,
-even when the fist one has been removed already. Every added handle gets an
+even when the first one has been removed already. Every added handle gets an
 `mid` one larger than the previously assigned one. Until the capacity of
 the table is reached and it starts looking for a free id at `1` again (`0`
 is always in the table).
@@ -52,8 +52,9 @@ The table is implemented in `uint-table.[ch]`. More details in [`UINT_SETS`](UIN
 
 There are several places where transfers need to be tracked:
 
-* the multi tracks `process`, `pending` and `msgsent` transfers. A transfer
-  is in at most one of these at a time.
+* the multi tracks `process`, `pending` and `msgsent` transfers. A transfer is
+  in at most one of these at a time. A `dirty` set, which may overlap with
+  `process`, tracks transfers that need to run immediately.
 * connections track the transfers that are *attached* to them.
 * multi event handling tracks transfers interested in a specific socket.
 * DoH handles track the handle they perform lookups for (and vice versa).
@@ -63,9 +64,9 @@ The first is a bitset optimal for storing a large number of unsigned int values.
 The second one is a "sparse" variant good for storing a small set of numbers.
 More details about these in [`UINT_SETS`](UINT_SETS.md).
 
-A multi uses `uint_bset`s for `process`, `pending` and `msgsent`. Connections
-and sockets use the sparse variant as both often track only a single transfer
-and at most 100 on an HTTP/2 or HTTP/3 connection/socket.
+A multi uses `uint_bset`s for `process`, `dirty`, `pending` and `msgsent`.
+Connections and sockets use the sparse variant as both often track only a
+single transfer and at most 100 on an HTTP/2 or HTTP/3 connection/socket.
 
 These sets allow safe iteration while being modified. This allows a multi
 to iterate over its "process" set while existing transfers are removed

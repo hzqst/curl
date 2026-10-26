@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -7,8 +8,6 @@ FTP
 </keywords>
 </info>
 
-#
-# Server-side
 <reply>
 <data>
 HTTP/1.1 301 redirect
@@ -48,8 +47,6 @@ works
 
 </reply>
 
-#
-# Client-side
 <client>
 <server>
 http
@@ -63,16 +60,11 @@ http://%HOSTIP:%HTTPPORT/%TESTNUMBER --location-trusted -u joe:secret
 </command>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 GET /%TESTNUMBER HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
-Authorization: Basic am9lOnNlY3JldA==
+Authorization: Basic %b64[joe:secret]b64%
 User-Agent: curl/%VERSION
 Accept: */*
 

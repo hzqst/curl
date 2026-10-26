@@ -131,6 +131,10 @@ you also set the CURLU_URLENCODE flag.
 
 Unless *CURLU_NO_AUTHORITY* is set, a blank hostname is not allowed to set.
 
+A numeric IPv4 address (in dotted decimal or a legacy form such as a single
+decimal, octal or hexadecimal number) is normalized to dotted decimal, the
+same way it is when libcurl parses a full URL.
+
 ## CURLUPART_ZONEID
 
 If the hostname is a numeric IPv6 address, this field can also be set.
@@ -184,8 +188,10 @@ course cannot know if the provided scheme is a valid one or not.
 When set, curl_url_set(3) URL encodes the part on entry, except for
 **scheme**, **port** and **URL**.
 
-When setting the path component with URL encoding enabled, the slash character
-is skipped.
+When setting the path component with URL encoding enabled, the following
+characters are left as-is if present:
+
+    ! $ & ' ( ) { } [ ] * + , ; = : @
 
 The query part gets space-to-plus converted before the URL conversion is
 applied.
@@ -221,6 +227,10 @@ If set, skips authority checks. The RFC allows individual schemes to omit the
 host part (normally the only mandatory part of the authority), but libcurl
 cannot know whether this is permitted for custom schemes. Specifying the flag
 permits empty authority sections, similar to how file scheme is handled.
+
+This option also makes libcurl accept and parse URLs with known schemes even
+when they have no hostnames. URLs such as `https://` and `ftp://` otherwise
+cause parse errors by default.
 
 ## CURLU_PATH_AS_IS
 

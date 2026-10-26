@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -5,11 +6,9 @@ FTP
 </keywords>
 </info>
 
-# Server-side
 <reply>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
@@ -25,12 +24,8 @@ upload this file twice
 </file>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD

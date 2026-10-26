@@ -21,8 +21,7 @@
  * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
-#include "server_setup.h"
-#include <stdlib.h>
+#include "first.h"
 
 /* Function
  *
@@ -41,15 +40,17 @@
  *                              state
  * "nmethods_max [number: 3]" - the minimum numberf NMETHODS the client must
  *                              state
- * "user [string]" - the user name that must match (if method is 2)
+ * "user [string]" - the username that must match (if method is 2)
  * "password [string]" - the password that must match (if method is 2)
  * "backend [IPv4]" - numerical IPv4 address of backend to connect to
  * "backendport [number:0]" - TCP port of backend to connect to. 0 means use
-                              the client's specified port number.
+ *                            the client's specified port number.
  * "method [number: 0]" - connect method to respond with:
  *                        0 - no auth
  *                        1 - GSSAPI (not supported)
  *                        2 - user + password
+ * "method2 [number]" - connect method to respond with on the second
+ *                      connection of the test, defaults to the "method" one
  * "response [number]" - the decimal number to respond to a connect
  *                       SOCKS5: 0 is OK, SOCKS4: 90 is ok
  *
@@ -57,33 +58,10 @@
 
 /* based on sockfilt.c */
 
-#ifndef UNDER_CE
-#include <signal.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_NETINET_IN6_H
-#include <netinet/in6.h>
-#endif
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-#ifdef HAVE_NETDB_H
-#include <netdb.h>
-#endif
-
-#include <curlx.h> /* from the private lib dir */
-#include "inet_pton.h"
-#include "util.h"
-#include "server_sockaddr.h"
-#include "tool_binmode.h"
-
-/* include memdebug.h last */
-#include <memdebug.h>
-
 static const char *backendaddr = "127.0.0.1";
-static unsigned short backendport = 0; /* default is use client's */
+static uint16_t backendport = 0; /* default is use client's */
+static unsigned int connections; /* clients served in the current test */
+static int last_testnum = -1;    /* the test the connections belong to */
 
 struct socksd_configurable {
   unsigned char version; /* initial version byte in the request must match
@@ -92,23 +70,26 @@ struct socksd_configurable {
   unsigned char nmethods_max; /* maximum number of nmethods to expect */
   unsigned char responseversion;
   unsigned char responsemethod;
+  int responsemethod2; /* negative means unset */
+  int testnum;
   unsigned char reqcmd;
   unsigned char connectrep;
-  unsigned short port; /* backend port */
+  uint16_t port; /* backend port */
   char addr[32]; /* backend IPv4 numerical */
   char user[256];
   char password[256];
 };
 
-#define CONFIG_VERSION 5
-#define CONFIG_NMETHODS_MIN 1 /* unauth, gssapi, auth */
-#define CONFIG_NMETHODS_MAX 3
+#define CONFIG_VERSION         5
+#define CONFIG_NMETHODS_MIN    1 /* unauth, gssapi, auth */
+#define CONFIG_NMETHODS_MAX    3
 #define CONFIG_RESPONSEVERSION CONFIG_VERSION
-#define CONFIG_RESPONSEMETHOD 0 /* no auth */
-#define CONFIG_REQCMD 1 /* CONNECT */
-#define CONFIG_PORT backendport
-#define CONFIG_ADDR backendaddr
-#define CONFIG_CONNECTREP 0
+#define CONFIG_RESPONSEMETHOD  0 /* no auth */
+#define CONFIG_RESPONSEMETHOD2 (-1) /* unset, use CONFIG_RESPONSEMETHOD */
+#define CONFIG_REQCMD          1 /* CONNECT */
+#define CONFIG_PORT            backendport
+#define CONFIG_ADDR            backendaddr
+#define CONFIG_CONNECTREP      0
 
 static struct socksd_configurable s_config;
 
@@ -122,23 +103,22 @@ static void socksd_resetdefaults(void)
   s_config.nmethods_max = CONFIG_NMETHODS_MAX;
   s_config.responseversion = CONFIG_RESPONSEVERSION;
   s_config.responsemethod = CONFIG_RESPONSEMETHOD;
+  s_config.responsemethod2 = CONFIG_RESPONSEMETHOD2;
+  s_config.testnum = 0;
   s_config.reqcmd = CONFIG_REQCMD;
   s_config.connectrep = CONFIG_CONNECTREP;
   s_config.port = CONFIG_PORT;
-  strcpy(s_config.addr, CONFIG_ADDR);
-  strcpy(s_config.user, "user");
-  strcpy(s_config.password, "password");
-}
-
-static unsigned short shortval(char *value)
-{
-  unsigned long num = strtoul(value, NULL, 10);
-  return num & 0xffff;
+  curlx_strcopy(s_config.addr, sizeof(s_config.addr),
+                CONFIG_ADDR, strlen(CONFIG_ADDR));
+  curlx_strcopy(s_config.user, sizeof(s_config.user),
+                "user", CURL_CSTRLEN("user"));
+  curlx_strcopy(s_config.password, sizeof(s_config.password),
+                "password", CURL_CSTRLEN("password"));
 }
 
 static void socksd_getconfig(void)
 {
-  FILE *fp = fopen(configfile, FOPEN_READTEXT);
+  FILE *fp = curlx_fopen(configfile, FOPEN_READTEXT);
   socksd_resetdefaults();
   if(fp) {
     char buffer[512];
@@ -146,80 +126,116 @@ static void socksd_getconfig(void)
     while(fgets(buffer, sizeof(buffer), fp)) {
       char key[32];
       char value[260];
-      if(2 == sscanf(buffer, "%31s %259s", key, value)) {
+      const char *pval;
+      curl_off_t num;
+      if(sscanf(buffer, "%31s %259s", key, value) == 2) {
         if(!strcmp(key, "version")) {
-          s_config.version = byteval(value);
-          logmsg("version [%d] set", s_config.version);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.version = (unsigned char)num;
+            logmsg("version [%d] set", s_config.version);
+          }
         }
         else if(!strcmp(key, "nmethods_min")) {
-          s_config.nmethods_min = byteval(value);
-          logmsg("nmethods_min [%d] set", s_config.nmethods_min);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.nmethods_min = (unsigned char)num;
+            logmsg("nmethods_min [%d] set", s_config.nmethods_min);
+          }
         }
         else if(!strcmp(key, "nmethods_max")) {
-          s_config.nmethods_max = byteval(value);
-          logmsg("nmethods_max [%d] set", s_config.nmethods_max);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.nmethods_max = (unsigned char)num;
+            logmsg("nmethods_max [%d] set", s_config.nmethods_max);
+          }
         }
         else if(!strcmp(key, "backend")) {
-          strcpy(s_config.addr, value);
+          curlx_strcopy(s_config.addr, sizeof(s_config.addr),
+                        value, strlen(value));
           logmsg("backend [%s] set", s_config.addr);
         }
         else if(!strcmp(key, "backendport")) {
-          s_config.port = shortval(value);
-          logmsg("backendport [%d] set", s_config.port);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xffff)) {
+            s_config.port = (uint16_t)num;
+            logmsg("backendport [%d] set", s_config.port);
+          }
         }
         else if(!strcmp(key, "user")) {
-          strcpy(s_config.user, value);
+          curlx_strcopy(s_config.user, sizeof(s_config.user),
+                        value, strlen(value));
           logmsg("user [%s] set", s_config.user);
         }
         else if(!strcmp(key, "password")) {
-          strcpy(s_config.password, value);
+          curlx_strcopy(s_config.password, sizeof(s_config.password),
+                        value, strlen(value));
           logmsg("password [%s] set", s_config.password);
         }
         /* Methods:
-           o  X'00' NO AUTHENTICATION REQUIRED
-           o  X'01' GSSAPI
-           o  X'02' USERNAME/PASSWORD
-        */
+           o  0x00 NO AUTHENTICATION REQUIRED
+           o  0x01 GSSAPI
+           o  0x02 USERNAME/PASSWORD
+         */
         else if(!strcmp(key, "method")) {
-          s_config.responsemethod = byteval(value);
-          logmsg("method [%d] set", s_config.responsemethod);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.responsemethod = (unsigned char)num;
+            logmsg("method [%d] set", s_config.responsemethod);
+          }
+        }
+        else if(!strcmp(key, "method2")) {
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.responsemethod2 = (int)num;
+            logmsg("method2 [%d] set", s_config.responsemethod2);
+          }
+        }
+        else if(!strcmp(key, "Testnum")) {
+          pval = value;
+          if(!curlx_str_number(&pval, &num, INT_MAX)) {
+            s_config.testnum = (int)num;
+            logmsg("testnum = %d", s_config.testnum);
+          }
         }
         else if(!strcmp(key, "response")) {
-          s_config.connectrep = byteval(value);
-          logmsg("response [%d] set", s_config.connectrep);
+          pval = value;
+          if(!curlx_str_number(&pval, &num, 0xff)) {
+            s_config.connectrep = (unsigned char)num;
+            logmsg("response [%d] set", s_config.connectrep);
+          }
         }
       }
     }
-    fclose(fp);
+    curlx_fclose(fp);
   }
 }
 
 /* RFC 1928, SOCKS5 byte index */
-#define SOCKS5_VERSION 0
+#define SOCKS5_VERSION  0
 #define SOCKS5_NMETHODS 1 /* number of methods that is listed */
 
 /* in the request: */
-#define SOCKS5_REQCMD 1
+#define SOCKS5_REQCMD   1
 #define SOCKS5_RESERVED 2
-#define SOCKS5_ATYP 3
-#define SOCKS5_DSTADDR 4
+#define SOCKS5_ATYP     3
+#define SOCKS5_DSTADDR  4
 
 /* connect response */
-#define SOCKS5_REP 1
+#define SOCKS5_REP     1
 #define SOCKS5_BNDADDR 4
 
 /* auth request */
-#define SOCKS5_ULEN 1
+#define SOCKS5_ULEN  1
 #define SOCKS5_UNAME 2
 
-#define SOCKS4_CD 1
+#define SOCKS4_CD      1
 #define SOCKS4_DSTPORT 2
 
 /* connect to a given IPv4 address, not the one asked for */
-static curl_socket_t socksconnect(unsigned short connectport,
+static curl_socket_t socksconnect(uint16_t connectport,
                                   const char *connectaddr)
 {
-  int rc;
   srvr_sockaddr_union_t me;
   curl_socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
   if(sock == CURL_SOCKET_BAD)
@@ -230,12 +246,11 @@ static curl_socket_t socksconnect(unsigned short connectport,
   me.sa4.sin_addr.s_addr = INADDR_ANY;
   curlx_inet_pton(AF_INET, connectaddr, &me.sa4.sin_addr);
 
-  rc = connect(sock, &me.sa, sizeof(me.sa4));
-
-  if(rc) {
-    int error = SOCKERRNO;
-    logmsg("Failed connecting to %s:%hu (%d) %s",
-           connectaddr, connectport, error, sstrerror(error));
+  if(connect(sock, &me.sa, sizeof(me.sa4))) {
+    char errbuf[STRERROR_LEN];
+    int sockerr = SOCKERRNO;
+    logmsg("Failed connecting to %s:%hu (%d) %s", connectaddr, connectport,
+           sockerr, curlx_strerror(sockerr, errbuf, sizeof(errbuf)));
     return CURL_SOCKET_BAD;
   }
   logmsg("Connected fine to %s:%d", connectaddr, connectport);
@@ -243,25 +258,25 @@ static curl_socket_t socksconnect(unsigned short connectport,
 }
 
 static curl_socket_t socks4(curl_socket_t fd,
-                            unsigned char *buffer,
+                            const unsigned char *buffer,
                             ssize_t rc)
 {
   unsigned char response[256 + 16];
   curl_socket_t connfd;
   unsigned char cd;
-  unsigned short s4port;
+  uint16_t s4port;
 
   if(buffer[SOCKS4_CD] != 1) {
     logmsg("SOCKS4 CD is not 1: %d", buffer[SOCKS4_CD]);
     return CURL_SOCKET_BAD;
   }
   if(rc < 9) {
-    logmsg("SOCKS4 connect message too short: %zd", rc);
+    logmsg("SOCKS4 connect message too short: %ld", (long)rc);
     return CURL_SOCKET_BAD;
   }
   if(!s_config.port)
-    s4port = (unsigned short)((buffer[SOCKS4_DSTPORT] << 8) |
-                              (buffer[SOCKS4_DSTPORT + 1]));
+    s4port = (uint16_t)((buffer[SOCKS4_DSTPORT] << 8) |
+                         buffer[SOCKS4_DSTPORT + 1]);
   else
     s4port = s_config.port;
 
@@ -278,12 +293,12 @@ static curl_socket_t socks4(curl_socket_t fd,
   response[1] = cd; /* result */
   /* copy port and address from connect request */
   memcpy(&response[2], &buffer[SOCKS4_DSTPORT], 6);
-  rc = (send)(fd, (char *)response, 8, 0);
+  rc = swrite(fd, response, 8);
   if(rc != 8) {
     logmsg("Sending SOCKS4 response failed!");
     return CURL_SOCKET_BAD;
   }
-  logmsg("Sent %zd bytes", rc);
+  logmsg("Sent %ld bytes", (long)rc);
   loghex(response, rc);
 
   if(cd == 90)
@@ -298,33 +313,41 @@ static curl_socket_t socks4(curl_socket_t fd,
 
 static curl_socket_t sockit(curl_socket_t fd)
 {
-  unsigned char buffer[2*256 + 16];
-  unsigned char response[2*256 + 16];
+  unsigned char buffer[(2 * 256) + 16];
+  unsigned char response[(2 * 256) + 16];
   ssize_t rc;
   unsigned char len;
   unsigned char type;
   unsigned char rep = 0;
-  unsigned char *address;
-  unsigned short socksport;
+  const unsigned char *address;
+  uint16_t socksport;
   curl_socket_t connfd = CURL_SOCKET_BAD;
-  unsigned short s5port;
+  uint16_t s5port;
 
   socksd_getconfig();
 
-  rc = recv(fd, (char *)buffer, sizeof(buffer), 0);
+  if(last_testnum != s_config.testnum) {
+    last_testnum = s_config.testnum;
+    connections = 0;
+  }
+
+  if((++connections == 2) && (s_config.responsemethod2 >= 0))
+    s_config.responsemethod = (unsigned char)s_config.responsemethod2;
+
+  rc = sread(fd, buffer, sizeof(buffer));
   if(rc <= 0) {
-    logmsg("SOCKS identifier message missing, recv returned %zd", rc);
+    logmsg("SOCKS identifier message missing, recv returned %ld", (long)rc);
     return CURL_SOCKET_BAD;
   }
 
-  logmsg("READ %zd bytes", rc);
+  logmsg("READ %ld bytes", (long)rc);
   loghex(buffer, rc);
 
   if(buffer[SOCKS5_VERSION] == 4)
     return socks4(fd, buffer, rc);
 
   if(rc < 3) {
-    logmsg("SOCKS5 identifier message too short: %zd", rc);
+    logmsg("SOCKS5 identifier message too short: %ld", (long)rc);
     return CURL_SOCKET_BAD;
   }
 
@@ -341,7 +364,8 @@ static curl_socket_t sockit(curl_socket_t fd)
   /* after NMETHODS follows that many bytes listing the methods the client
      says it supports */
   if(rc != (buffer[SOCKS5_NMETHODS] + 2)) {
-    logmsg("Expected %d bytes, got %zd", buffer[SOCKS5_NMETHODS] + 2, rc);
+    logmsg("Expected %d bytes, got %ld",
+           buffer[SOCKS5_NMETHODS] + 2, (long)rc);
     return CURL_SOCKET_BAD;
   }
   logmsg("Incoming request deemed fine!");
@@ -349,22 +373,23 @@ static curl_socket_t sockit(curl_socket_t fd)
   /* respond with two bytes: VERSION + METHOD */
   response[0] = s_config.responseversion;
   response[1] = s_config.responsemethod;
-  rc = (send)(fd, (char *)response, 2, 0);
+  rc = swrite(fd, response, 2);
   if(rc != 2) {
     logmsg("Sending response failed!");
     return CURL_SOCKET_BAD;
   }
-  logmsg("Sent %zd bytes", rc);
+  logmsg("Sent %ld bytes", (long)rc);
   loghex(response, rc);
 
   /* expect the request or auth */
-  rc = recv(fd, (char *)buffer, sizeof(buffer), 0);
+  rc = sread(fd, buffer, sizeof(buffer));
   if(rc <= 0) {
-    logmsg("SOCKS5 request or auth message missing, recv returned %zd", rc);
+    logmsg("SOCKS5 request or auth message missing, recv returned %ld",
+           (long)rc);
     return CURL_SOCKET_BAD;
   }
 
-  logmsg("READ %zd bytes", rc);
+  logmsg("READ %ld bytes", (long)rc);
   loghex(buffer, rc);
 
   if(s_config.responsemethod == 2) {
@@ -374,12 +399,12 @@ static curl_socket_t sockit(curl_socket_t fd)
        +----+------+----------+------+----------+
        | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
        +----+------+----------+------+----------+
-    */
+     */
     unsigned char ulen;
     unsigned char plen;
     bool login = TRUE;
     if(rc < 5) {
-      logmsg("Too short auth input: %zd", rc);
+      logmsg("Too short auth input: %ld", (long)rc);
       return CURL_SOCKET_BAD;
     }
     if(buffer[SOCKS5_VERSION] != 1) {
@@ -388,12 +413,13 @@ static curl_socket_t sockit(curl_socket_t fd)
     }
     ulen = buffer[SOCKS5_ULEN];
     if(rc < 4 + ulen) {
-      logmsg("Too short packet for username: %zd", rc);
+      logmsg("Too short packet for username: %ld", (long)rc);
       return CURL_SOCKET_BAD;
     }
     plen = buffer[SOCKS5_ULEN + ulen + 1];
     if(rc < 3 + ulen + plen) {
-      logmsg("Too short packet for ulen %d plen %d: %zd", ulen, plen, rc);
+      logmsg("Too short packet for ulen %d plen %d: %ld",
+             ulen, plen, (long)rc);
       return CURL_SOCKET_BAD;
     }
     if((ulen != strlen(s_config.user)) ||
@@ -406,28 +432,28 @@ static curl_socket_t sockit(curl_socket_t fd)
     }
     response[0] = 1;
     response[1] = login ? 0 : 1;
-    rc = (send)(fd, (char *)response, 2, 0);
+    rc = swrite(fd, response, 2);
     if(rc != 2) {
       logmsg("Sending auth response failed!");
       return CURL_SOCKET_BAD;
     }
-    logmsg("Sent %zd bytes", rc);
+    logmsg("Sent %ld bytes", (long)rc);
     loghex(response, rc);
     if(!login)
       return CURL_SOCKET_BAD;
 
     /* expect the request */
-    rc = recv(fd, (char *)buffer, sizeof(buffer), 0);
+    rc = sread(fd, buffer, sizeof(buffer));
     if(rc <= 0) {
-      logmsg("SOCKS5 request message missing, recv returned %zd", rc);
+      logmsg("SOCKS5 request message missing, recv returned %ld", (long)rc);
       return CURL_SOCKET_BAD;
     }
 
-    logmsg("READ %zd bytes", rc);
+    logmsg("READ %ld bytes", (long)rc);
     loghex(buffer, rc);
   }
   if(rc < 6) {
-    logmsg("Too short for request: %zd", rc);
+    logmsg("Too short for request: %ld", (long)rc);
     return CURL_SOCKET_BAD;
   }
 
@@ -446,10 +472,10 @@ static curl_socket_t sockit(curl_socket_t fd)
     return CURL_SOCKET_BAD;
   }
   /* ATYP:
-     o  IP V4 address: X'01'
-     o  DOMAINNAME: X'03'
-     o  IP V6 address: X'04'
-  */
+     o IPv4 address: 0x01
+     o domain name:  0x03
+     o IPv6 address: 0x04
+   */
   type = buffer[SOCKS5_ATYP];
   address = &buffer[SOCKS5_DSTADDR];
   switch(type) {
@@ -472,14 +498,14 @@ static curl_socket_t sockit(curl_socket_t fd)
     return CURL_SOCKET_BAD;
   }
   if(rc < (4 + len + 2)) {
-    logmsg("Request too short: %zd, expected %d", rc, 4 + len + 2);
+    logmsg("Request too short: %ld, expected %d", (long)rc, 4 + len + 2);
     return CURL_SOCKET_BAD;
   }
   logmsg("Received ATYP %d", type);
 
   {
     FILE *dump;
-    dump = fopen(reqlogfile, "ab");
+    dump = curlx_fopen(reqlogfile, "ab");
     if(dump) {
       int i;
       fprintf(dump, "atyp %u =>", type);
@@ -492,7 +518,7 @@ static curl_socket_t sockit(curl_socket_t fd)
       case 3:
         /* The first octet of the address field contains the number of octets
            of name that follow */
-        fprintf(dump, " %.*s\n", len-1, &address[1]);
+        fprintf(dump, " %.*s\n", len - 1, &address[1]);
         break;
       case 4:
         /* 16 bytes IPv6 address */
@@ -502,13 +528,13 @@ static curl_socket_t sockit(curl_socket_t fd)
         fprintf(dump, "\n");
         break;
       }
-      fclose(dump);
+      curlx_fclose(dump);
     }
   }
 
   if(!s_config.port) {
-    unsigned char *portp = &buffer[SOCKS5_DSTADDR + len];
-    s5port = (unsigned short)((portp[0] << 8) | (portp[1]));
+    const unsigned char *portp = &buffer[SOCKS5_DSTADDR + len];
+    s5port = (uint16_t)((portp[0] << 8) | portp[1]);
   }
   else
     s5port = s_config.port;
@@ -524,22 +550,20 @@ static curl_socket_t sockit(curl_socket_t fd)
     rep = s_config.connectrep;
   }
 
-  /* */
   response[SOCKS5_VERSION] = s_config.responseversion;
 
-  /*
-    o  REP    Reply field:
-    o  X'00' succeeded
-    o  X'01' general SOCKS server failure
-    o  X'02' connection not allowed by ruleset
-    o  X'03' Network unreachable
-    o  X'04' Host unreachable
-    o  X'05' Connection refused
-    o  X'06' TTL expired
-    o  X'07' Command not supported
-    o  X'08' Address type not supported
-    o  X'09' to X'FF' unassigned
-  */
+  /* o REP  Reply field:
+     o 0x00 succeeded
+     o 0x01 general SOCKS server failure
+     o 0x02 connection not allowed by ruleset
+     o 0x03 Network unreachable
+     o 0x04 Host unreachable
+     o 0x05 Connection refused
+     o 0x06 TTL expired
+     o 0x07 Command not supported
+     o 0x08 Address type not supported
+     o 0x09 to 0xFF unassigned
+   */
   response[SOCKS5_REP] = rep;
   response[SOCKS5_RESERVED] = 0; /* must be zero */
   response[SOCKS5_ATYP] = type; /* address type */
@@ -553,12 +577,12 @@ static curl_socket_t sockit(curl_socket_t fd)
   memcpy(&response[SOCKS5_BNDADDR + len],
          &buffer[SOCKS5_DSTADDR + len], sizeof(socksport));
 
-  rc = (send)(fd, (char *)response, (SEND_TYPE_ARG3)(len + 6), 0);
+  rc = swrite(fd, response, len + 6);
   if(rc != (len + 6)) {
     logmsg("Sending connect response failed!");
     return CURL_SOCKET_BAD;
   }
-  logmsg("Sent %zd bytes", rc);
+  logmsg("Sent %ld bytes", (long)rc);
   loghex(response, rc);
 
   if(!rep)
@@ -586,10 +610,9 @@ static int tunnel(struct perclient *cp, fd_set *fds)
   char buffer[512];
   if(FD_ISSET(cp->clientfd, fds)) {
     /* read from client, send to remote */
-    nread = recv(cp->clientfd, buffer, sizeof(buffer), 0);
+    nread = sread(cp->clientfd, buffer, sizeof(buffer));
     if(nread > 0) {
-      nwrite = send(cp->remotefd, (char *)buffer,
-                    (SEND_TYPE_ARG3)nread, 0);
+      nwrite = swrite(cp->remotefd, buffer, nread);
       if(nwrite != nread)
         return 1;
       cp->fromclient += nwrite;
@@ -599,10 +622,9 @@ static int tunnel(struct perclient *cp, fd_set *fds)
   }
   if(FD_ISSET(cp->remotefd, fds)) {
     /* read from remote, send to client */
-    nread = recv(cp->remotefd, buffer, sizeof(buffer), 0);
+    nread = sread(cp->remotefd, buffer, sizeof(buffer));
     if(nread > 0) {
-      nwrite = send(cp->clientfd, (char *)buffer,
-                    (SEND_TYPE_ARG3)nread, 0);
+      nwrite = swrite(cp->clientfd, buffer, nread);
       if(nwrite != nread)
         return 1;
       cp->fromremote += nwrite;
@@ -613,12 +635,10 @@ static int tunnel(struct perclient *cp, fd_set *fds)
   return 0;
 }
 
-/*
-  sockfdp is a pointer to an established stream or CURL_SOCKET_BAD
+/* sockfdp is a pointer to an established stream or CURL_SOCKET_BAD
 
-  if sockfd is CURL_SOCKET_BAD, listendfd is a listening socket we must
-  accept()
-*/
+   if sockfd is CURL_SOCKET_BAD, listendfd is a listening socket we must
+   accept() */
 static bool socksd_incoming(curl_socket_t listenfd)
 {
   fd_set fds_read;
@@ -644,7 +664,8 @@ static bool socksd_incoming(curl_socket_t listenfd)
   do {
     int i;
     ssize_t rc;
-    int error = 0;
+    int sockerr = 0;
+    char errbuf[STRERROR_LEN];
     curl_socket_t sockfd = listenfd;
     int maxfd = (int)sockfd;
 
@@ -652,38 +673,17 @@ static bool socksd_incoming(curl_socket_t listenfd)
     FD_ZERO(&fds_write);
     FD_ZERO(&fds_err);
 
-    /* there's always a socket to wait for */
-#if defined(__DJGPP__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warith-conversion"
-#endif
+    /* there is always a socket to wait for */
     FD_SET(sockfd, &fds_read);
-#if defined(__DJGPP__)
-#pragma GCC diagnostic pop
-#endif
 
     for(i = 0; i < 2; i++) {
       if(c[i].used) {
         curl_socket_t fd = c[i].clientfd;
-#if defined(__DJGPP__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warith-conversion"
-#endif
         FD_SET(fd, &fds_read);
-#if defined(__DJGPP__)
-#pragma GCC diagnostic pop
-#endif
         if((int)fd > maxfd)
           maxfd = (int)fd;
         fd = c[i].remotefd;
-#if defined(__DJGPP__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warith-conversion"
-#endif
         FD_SET(fd, &fds_read);
-#if defined(__DJGPP__)
-#pragma GCC diagnostic pop
-#endif
         if((int)fd > maxfd)
           maxfd = (int)fd;
       }
@@ -696,20 +696,20 @@ static bool socksd_incoming(curl_socket_t listenfd)
         logmsg("signalled to die, exiting...");
         return FALSE;
       }
-    } while((rc == -1) && ((error = SOCKERRNO) == SOCKEINTR));
+    } while((rc == -1) && ((sockerr = SOCKERRNO) == SOCKEINTR));
 
     if(rc < 0) {
       logmsg("select() failed with error (%d) %s",
-             error, sstrerror(error));
+             sockerr, curlx_strerror(sockerr, errbuf, sizeof(errbuf)));
       return FALSE;
     }
 
     if((clients < 2) && FD_ISSET(sockfd, &fds_read)) {
       curl_socket_t newfd = accept(sockfd, NULL, NULL);
-      if(CURL_SOCKET_BAD == newfd) {
-        error = SOCKERRNO;
+      if(newfd == CURL_SOCKET_BAD) {
+        sockerr = SOCKERRNO;
         logmsg("accept() failed with error (%d) %s",
-               error, sstrerror(error));
+               sockerr, curlx_strerror(sockerr, errbuf, sizeof(errbuf)));
       }
       else {
         curl_socket_t remotefd;
@@ -733,20 +733,17 @@ static bool socksd_incoming(curl_socket_t listenfd)
           cp->used = TRUE;
           clients++;
         }
-
       }
     }
     for(i = 0; i < 2; i++) {
       struct perclient *cp = &c[i];
-      if(cp->used) {
-        if(tunnel(cp, &fds_read)) {
-          logmsg("SOCKS transfer completed. Bytes: < %zu > %zu",
-                 cp->fromremote, cp->fromclient);
-          sclose(cp->clientfd);
-          sclose(cp->remotefd);
-          cp->used = FALSE;
-          clients--;
-        }
+      if(cp->used && tunnel(cp, &fds_read)) {
+        logmsg("SOCKS transfer completed. Bytes: < %lu > %lu",
+               (unsigned long)cp->fromremote, (unsigned long)cp->fromclient);
+        sclose(cp->clientfd);
+        sclose(cp->remotefd);
+        cp->used = FALSE;
+        clients--;
       }
     }
   } while(clients);
@@ -754,179 +751,17 @@ static bool socksd_incoming(curl_socket_t listenfd)
   return TRUE;
 }
 
-static curl_socket_t socksd_sockdaemon(curl_socket_t sock,
-                                       unsigned short *listenport,
-                                       const char *unix_socket,
-                                       bool bind_only)
-{
-  /* passive daemon style */
-  srvr_sockaddr_union_t listener;
-  int flag;
-  int rc;
-  int totdelay = 0;
-  int maxretr = 10;
-  int delay = 20;
-  int attempt = 0;
-  int error = 0;
-
-#ifndef USE_UNIX_SOCKETS
-  (void)unix_socket;
-#endif
-
-  do {
-    attempt++;
-    flag = 1;
-    rc = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
-         (void *)&flag, sizeof(flag));
-    if(rc) {
-      error = SOCKERRNO;
-      logmsg("setsockopt(SO_REUSEADDR) failed with error (%d) %s",
-             error, sstrerror(error));
-      if(maxretr) {
-        rc = wait_ms(delay);
-        if(rc) {
-          /* should not happen */
-          error = SOCKERRNO;
-          logmsg("wait_ms() failed with error (%d) %s",
-                 error, sstrerror(error));
-          sclose(sock);
-          return CURL_SOCKET_BAD;
-        }
-        if(got_exit_signal) {
-          logmsg("signalled to die, exiting...");
-          sclose(sock);
-          return CURL_SOCKET_BAD;
-        }
-        totdelay += delay;
-        delay *= 2; /* double the sleep for next attempt */
-      }
-    }
-  } while(rc && maxretr--);
-
-  if(rc) {
-    logmsg("setsockopt(SO_REUSEADDR) failed %d times in %d ms. Error (%d) %s",
-           attempt, totdelay, error, strerror(error));
-    logmsg("Continuing anyway...");
-  }
-
-  /* When the specified listener port is zero, it is actually a
-     request to let the system choose a non-zero available port. */
-
-  switch(socket_domain) {
-    case AF_INET:
-      memset(&listener.sa4, 0, sizeof(listener.sa4));
-      listener.sa4.sin_family = AF_INET;
-      listener.sa4.sin_addr.s_addr = INADDR_ANY;
-      listener.sa4.sin_port = htons(*listenport);
-      rc = bind(sock, &listener.sa, sizeof(listener.sa4));
-      break;
-#ifdef USE_IPV6
-    case AF_INET6:
-      memset(&listener.sa6, 0, sizeof(listener.sa6));
-      listener.sa6.sin6_family = AF_INET6;
-      listener.sa6.sin6_addr = in6addr_any;
-      listener.sa6.sin6_port = htons(*listenport);
-      rc = bind(sock, &listener.sa, sizeof(listener.sa6));
-      break;
-#endif /* USE_IPV6 */
-#ifdef USE_UNIX_SOCKETS
-    case AF_UNIX:
-    rc = bind_unix_socket(sock, unix_socket, &listener.sau);
-#endif
-  }
-
-  if(rc) {
-    error = SOCKERRNO;
-#ifdef USE_UNIX_SOCKETS
-    if(socket_domain == AF_UNIX)
-      logmsg("Error binding socket on path %s (%d) %s",
-             unix_socket, error, sstrerror(error));
-    else
-#endif
-      logmsg("Error binding socket on port %hu (%d) %s",
-             *listenport, error, sstrerror(error));
-    sclose(sock);
-    return CURL_SOCKET_BAD;
-  }
-
-  if(!*listenport
-#ifdef USE_UNIX_SOCKETS
-          && !unix_socket
-#endif
-    ) {
-    /* The system was supposed to choose a port number, figure out which
-       port we actually got and update the listener port value with it. */
-    curl_socklen_t la_size;
-    srvr_sockaddr_union_t localaddr;
-#ifdef USE_IPV6
-    if(socket_domain == AF_INET6)
-      la_size = sizeof(localaddr.sa6);
-    else
-#endif
-      la_size = sizeof(localaddr.sa4);
-    memset(&localaddr.sa, 0, (size_t)la_size);
-    if(getsockname(sock, &localaddr.sa, &la_size) < 0) {
-      error = SOCKERRNO;
-      logmsg("getsockname() failed with error (%d) %s",
-             error, sstrerror(error));
-      sclose(sock);
-      return CURL_SOCKET_BAD;
-    }
-    switch(localaddr.sa.sa_family) {
-    case AF_INET:
-      *listenport = ntohs(localaddr.sa4.sin_port);
-      break;
-#ifdef USE_IPV6
-    case AF_INET6:
-      *listenport = ntohs(localaddr.sa6.sin6_port);
-      break;
-#endif
-    default:
-      break;
-    }
-    if(!*listenport) {
-      /* Real failure, listener port shall not be zero beyond this point. */
-      logmsg("Apparently getsockname() succeeded, with listener port zero.");
-      logmsg("A valid reason for this failure is a binary built without");
-      logmsg("proper network library linkage. This might not be the only");
-      logmsg("reason, but double check it before anything else.");
-      sclose(sock);
-      return CURL_SOCKET_BAD;
-    }
-  }
-
-  /* bindonly option forces no listening */
-  if(bind_only) {
-    logmsg("instructed to bind port without listening");
-    return sock;
-  }
-
-  /* start accepting connections */
-  rc = listen(sock, 5);
-  if(0 != rc) {
-    error = SOCKERRNO;
-    logmsg("listen() failed with error (%d) %s", error, sstrerror(error));
-    sclose(sock);
-    return CURL_SOCKET_BAD;
-  }
-
-  return sock;
-}
-
-
-int main(int argc, char *argv[])
+static int test_socksd(int argc, const char *argv[])
 {
   curl_socket_t sock = CURL_SOCKET_BAD;
   curl_socket_t msgsock = CURL_SOCKET_BAD;
   int wrotepidfile = 0;
   int wroteportfile = 0;
   bool juggle_again;
-  int error;
+  char errbuf[STRERROR_LEN];
   int arg = 1;
-
-  const char *unix_socket = NULL;
 #ifdef USE_UNIX_SOCKETS
-  bool unlink_socket = false;
+  bool unlink_socket = FALSE;
 #endif
 
   pidname = ".socksd.pid";
@@ -935,6 +770,8 @@ int main(int argc, char *argv[])
   server_port = 8905;
 
   while(argc > arg) {
+    const char *opt;
+    curl_off_t num;
     if(!strcmp("--version", argv[arg])) {
       printf("socksd IPv4%s\n",
 #ifdef USE_IPV6
@@ -942,7 +779,7 @@ int main(int argc, char *argv[])
 #else
              ""
 #endif
-             );
+      );
       return 0;
     }
     else if(!strcmp("--pidfile", argv[arg])) {
@@ -967,8 +804,12 @@ int main(int argc, char *argv[])
     }
     else if(!strcmp("--backendport", argv[arg])) {
       arg++;
-      if(argc > arg)
-        backendport = (unsigned short)atoi(argv[arg++]);
+      if(argc > arg) {
+        opt = argv[arg];
+        if(!curlx_str_number(&opt, &num, 0xffff))
+          backendport = (uint16_t)num;
+        arg++;
+      }
     }
     else if(!strcmp("--logfile", argv[arg])) {
       arg++;
@@ -982,16 +823,14 @@ int main(int argc, char *argv[])
     }
     else if(!strcmp("--ipv6", argv[arg])) {
 #ifdef USE_IPV6
-      socket_domain = AF_INET6;
       socket_type = "IPv6";
+      socket_domain = AF_INET6;
 #endif
       arg++;
     }
     else if(!strcmp("--ipv4", argv[arg])) {
-      /* for completeness, we support this option as well */
-#ifdef USE_IPV6
       socket_type = "IPv4";
-#endif
+      socket_domain = AF_INET;
       arg++;
     }
     else if(!strcmp("--unix-socket", argv[arg])) {
@@ -999,15 +838,15 @@ int main(int argc, char *argv[])
       if(argc > arg) {
 #ifdef USE_UNIX_SOCKETS
         struct sockaddr_un sau;
-        unix_socket = argv[arg];
-        if(strlen(unix_socket) >= sizeof(sau.sun_path)) {
+        server_unix_socket = argv[arg];
+        if(strlen(server_unix_socket) >= sizeof(sau.sun_path)) {
           fprintf(stderr,
                   "socksd: socket path must be shorter than %u chars: %s\n",
-                  (unsigned int)sizeof(sau.sun_path), unix_socket);
+                  (unsigned int)sizeof(sau.sun_path), server_unix_socket);
           return 0;
         }
-        socket_domain = AF_UNIX;
         socket_type = "unix";
+        socket_domain = AF_UNIX;
 #endif
         arg++;
       }
@@ -1015,9 +854,9 @@ int main(int argc, char *argv[])
     else if(!strcmp("--port", argv[arg])) {
       arg++;
       if(argc > arg) {
-        char *endptr;
-        unsigned long ulnum = strtoul(argv[arg], &endptr, 10);
-        server_port = util_ultous(ulnum);
+        opt = argv[arg];
+        if(!curlx_str_number(&opt, &num, 0xffff))
+          server_port = (uint16_t)num;
         arg++;
       }
     }
@@ -1034,40 +873,34 @@ int main(int argc, char *argv[])
            " --ipv4\n"
            " --ipv6\n"
            " --unix-socket [file]\n"
-           " --bindonly\n"
            " --port [port]\n");
       return 0;
     }
   }
 
-#ifdef _WIN32
-  if(win32_init())
-    return 2;
-#endif
+  CURL_BINMODE(stdin);
+  CURL_BINMODE(stdout);
+  CURL_BINMODE(stderr);
 
-  CURL_SET_BINMODE(stdin);
-  CURL_SET_BINMODE(stdout);
-  CURL_SET_BINMODE(stderr);
-
-  install_signal_handlers(false);
+  install_signal_handlers(FALSE);
 
   sock = socket(socket_domain, SOCK_STREAM, 0);
 
-  if(CURL_SOCKET_BAD == sock) {
-    error = SOCKERRNO;
+  if(sock == CURL_SOCKET_BAD) {
+    int sockerr = SOCKERRNO;
     logmsg("Error creating socket (%d) %s",
-           error, sstrerror(error));
+           sockerr, curlx_strerror(sockerr, errbuf, sizeof(errbuf)));
     goto socks5_cleanup;
   }
 
   {
     /* passive daemon style */
-    sock = socksd_sockdaemon(sock, &server_port, unix_socket, FALSE);
-    if(CURL_SOCKET_BAD == sock) {
+    sock = sockdaemon(sock, &server_port, server_unix_socket, FALSE);
+    if(sock == CURL_SOCKET_BAD) {
       goto socks5_cleanup;
     }
 #ifdef USE_UNIX_SOCKETS
-    unlink_socket = true;
+    unlink_socket = TRUE;
 #endif
     msgsock = CURL_SOCKET_BAD; /* no stream socket yet */
   }
@@ -1076,7 +909,7 @@ int main(int argc, char *argv[])
 
 #ifdef USE_UNIX_SOCKETS
   if(socket_domain == AF_UNIX)
-    logmsg("Listening on Unix socket %s", unix_socket);
+    logmsg("Listening on Unix socket %s", server_unix_socket);
   else
 #endif
   logmsg("Listening on port %hu", server_port);
@@ -1106,10 +939,10 @@ socks5_cleanup:
     sclose(sock);
 
 #ifdef USE_UNIX_SOCKETS
-  if(unlink_socket && socket_domain == AF_UNIX && unix_socket) {
-    error = unlink(unix_socket);
-    logmsg("unlink(%s) = %d (%s)", unix_socket, error, strerror(error));
-  }
+  if(unlink_socket && socket_domain == AF_UNIX && server_unix_socket &&
+     unlink(server_unix_socket))
+    logmsg("unlink(%s): %d (%s)", server_unix_socket,
+           errno, curlx_strerror(errno, errbuf, sizeof(errbuf)));
 #endif
 
   if(wrotepidfile)
@@ -1117,18 +950,7 @@ socks5_cleanup:
   if(wroteportfile)
     unlink(portname);
 
-  restore_signal_handlers(false);
+  restore_signal_handlers(FALSE);
 
-  if(got_exit_signal) {
-    logmsg("============> socksd exits with signal (%d)", exit_signal);
-    /*
-     * To properly set the return status of the process we
-     * must raise the same signal SIGINT or SIGTERM that we
-     * caught and let the old handler take care of it.
-     */
-    raise(exit_signal);
-  }
-
-  logmsg("============> socksd quits");
   return 0;
 }

@@ -1,17 +1,16 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 FTP
 </keywords>
 </info>
-# Server-side
 <reply>
 <data>
 many parts there are
 </data>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
@@ -24,12 +23,8 @@ ftp://%HOSTIP:%FTPPORT/part1/part2/part3/part4/part5/part6/part7/part8/part9/par
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD
@@ -189,5 +184,9 @@ SIZE %TESTNUMBER
 RETR %TESTNUMBER
 QUIT
 </protocol>
+<limits>
+Allocations: 180
+Maximum allocated: 150000
+</limits>
 </verify>
 </testcase>

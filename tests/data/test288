@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -5,7 +6,6 @@ FILE
 </keywords>
 </info>
 
-# Server-side
 <reply>
 <data>
 foo
@@ -16,11 +16,7 @@ moo
 </data>
 </reply>
 
-# Client-side
 <client>
-<server>
-none
-</server>
 <features>
 file
 </features>
@@ -42,7 +38,6 @@ moo
 </file>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
 </verify>
 </testcase>

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -7,12 +8,11 @@ HTTP NTLM auth
 NTLM
 </keywords>
 </info>
-# Server-side
 <reply>
 
 # This is supposed to be returned when the server gets a first
 # Authorization: NTLM line passed-in from the client
-<data1001>
+<data1001 crlf="headers">
 HTTP/1.1 401 Now gimme that second request of crap
 Server: Microsoft-IIS/5.0
 Content-Length: 34
@@ -24,7 +24,7 @@ This is not the real page either!
 
 # This is supposed to be returned when the server gets the second
 # Authorization: NTLM line passed-in from the client
-<data1002>
+<data1002 crlf="headers">
 HTTP/1.1 401 You give me wrong password
 Server: Microsoft-IIS/5.0
 WWW-Authenticate: NTLM
@@ -34,7 +34,7 @@ Content-Type: text/html; charset=iso-8859-1
 Wrong password dude. Get it fixed and return.
 </data1002>
 
-<datacheck>
+<datacheck crlf="headers">
 HTTP/1.1 401 Now gimme that second request of crap
 Server: Microsoft-IIS/5.0
 Content-Length: 34
@@ -52,7 +52,6 @@ Wrong password dude. Get it fixed and return.
 
 </reply>
 
-# Client-side
 <client>
 <features>
 NTLM
@@ -70,12 +69,11 @@ http://%HOSTIP:%HTTPPORT/%TESTNUMBER -u testuser:testpass --ntlm
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET /%TESTNUMBER HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
-Authorization: NTLM TlRMTVNTUAABAAAABoIIAAAAAAAAAAAAAAAAAAAAAAA=
+Authorization: NTLM %b64[NTLMSSP%00%01%00%00%00%06%82%08%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00]b64%
 User-Agent: curl/%VERSION
 Accept: */*
 

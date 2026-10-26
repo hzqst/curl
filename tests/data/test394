@@ -1,14 +1,12 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 HTTP
 HTTP GET
-FAILURE
 </keywords>
 </info>
 
-#
-# Server-side
 <reply>
 <data nocheck="yes">
 HTTP/1.1 200 OK swsclose
@@ -26,8 +24,6 @@ Funny-head: yesyes
 </data>
 </reply>
 
-#
-# Client-side
 <client>
 <server>
 http
@@ -40,13 +36,11 @@ http://%HOSTIP:%HTTPPORT/%TESTNUMBER
 </command>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
 <errorcode>
 8
 </errorcode>
-<protocol>
+<protocol crlf="headers">
 GET /%TESTNUMBER HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
 User-Agent: curl/%VERSION

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -10,7 +11,6 @@ IPv6
 </keywords>
 </info>
 
-# Server-side
 <reply>
 <data>
 HTTP/1.1 200 OK
@@ -23,7 +23,6 @@ foo
 </data>
 </reply>
 
-# Client-side
 <client>
 <features>
 http
@@ -44,9 +43,8 @@ http://%HOST6IP:%HTTP6PORT/%TESTNUMBER
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET /%TESTNUMBER HTTP/1.1
 Host: %HOST6IP:%HTTP6PORT
 User-Agent: curl/%VERSION

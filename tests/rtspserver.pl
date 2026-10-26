@@ -38,7 +38,7 @@ use serverhelp qw(
     );
 
 my $verbose = 0;     # set to 1 for debugging
-my $port = 8990;     # just a default
+my $port = 8990;     # a default
 my $ipvnum = 4;      # default IP version of rtsp server
 my $idnum = 1;       # default rtsp server instance number
 my $proto = 'rtsp';  # protocol the rtsp server speaks
@@ -49,7 +49,7 @@ my $srcdir;
 
 my $flags  = "";
 my $path   = '.';
-my $logdir = $path .'/log';
+my $logdir = $path . '/log';
 
 while(@ARGV) {
     if($ARGV[0] eq '--pidfile') {
@@ -104,7 +104,7 @@ while(@ARGV) {
         $verbose = 1;
     }
     else {
-        print STDERR "\nWarning: rtspserver.pl unknown parameter: $ARGV[0]\n";
+        print STDERR "\nWarning: rtspserver.pl unknown parameter: '$ARGV[0]'\n";
     }
     shift @ARGV;
 }
@@ -123,11 +123,11 @@ if(!$logfile) {
     $logfile = server_logfilename($logdir, $proto, $ipvnum, $idnum);
 }
 
-$flags .= "--pidfile \"$pidfile\" ".
-    "--portfile \"$portfile\" ".
-    "--logfile \"$logfile\" ".
+$flags .= "--pidfile \"$pidfile\" " .
+    "--portfile \"$portfile\" " .
+    "--logfile \"$logfile\" " .
     "--logdir \"$logdir\" ";
 $flags .= "--ipv$ipvnum --port $port --srcdir \"$srcdir\"";
 
 $| = 1;
-exec("exec ".server_exe('rtspd')." $flags");
+exec("exec " . server_exe('rtspd') . " $flags");

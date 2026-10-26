@@ -8,6 +8,7 @@ Help: Load/save SSL session tickets from/to this file
 Added: 8.12.0
 Category: tls
 Multi: single
+Experimental: yes
 See-also:
   - tls-earlydata
 Example:
@@ -33,3 +34,17 @@ The SSL session tickets are stored as base64 encoded text, each ticket on
 its own line. The hostnames are cryptographically salted and hashed. While
 this prevents someone from easily seeing the hosts you contacted, they could
 still check if a specific hostname matches one of the values.
+
+This feature requires that the underlying libcurl was built with the
+experimental SSL session import/export feature (SSLS-EXPORT) enabled.
+
+The sessions in the file identify origin and used TLS configurations.
+Configuration parameters identified by a file path are only matched to the
+path, not the file's content. Updates to CA, CRL or key file contents do
+not invalidate previously saved sessions.
+
+Most TLS sessions handed out by servers have a short lifetime, which
+limits the risk. Also, curl does not persist TLS session in this file
+that are tied to authentication, e.g. a client certificate. If that all
+is not acceptable, ssl session files should be cleared when older than
+the CA/CRL file used or not used at all.

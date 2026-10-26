@@ -1,14 +1,14 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
 HTTP
+FILE
 FTP
 parallel
 </keywords>
 </info>
 
-#
-# Server-side
 <reply>
 <data nocheck="yes">
 HTTP/1.1 200 OK
@@ -24,8 +24,6 @@ Content-Type: text/html
 
 </reply>
 
-#
-# Client-side
 <client>
 <file name="%LOGDIR/test%TESTNUMBER.txt">
 %repeat[1000 x hellofile!]%
@@ -42,7 +40,6 @@ http://%HOSTIP:%HTTPPORT/%TESTNUMBER file://localhost%FILE_PWD/%LOGDIR/test%TEST
 </command>
 </client>
 
-#
 <verify>
 </verify>
 </testcase>

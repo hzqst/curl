@@ -24,46 +24,59 @@
 
 /* Base64 encoding/decoding */
 
-#include "../curl_setup.h"
+#include "curl_setup.h"
 
-#if !defined(CURL_DISABLE_HTTP_AUTH) || defined(USE_SSH) || \
-  !defined(CURL_DISABLE_LDAP) || \
-  !defined(CURL_DISABLE_SMTP) || \
-  !defined(CURL_DISABLE_POP3) || \
-  !defined(CURL_DISABLE_IMAP) || \
-  !defined(CURL_DISABLE_DIGEST_AUTH) || \
-  !defined(CURL_DISABLE_DOH) || defined(USE_SSL) || !defined(BUILDING_LIBCURL)
-#include <curl/curl.h>
-#include "warnless.h"
-#include "base64.h"
-
-/* The last 2 #include files should be in this order */
-#ifdef BUILDING_LIBCURL
-#include "../curl_memory.h"
-#endif
-#include "../memdebug.h"
+#include "curlx/base64.h"
 
 /* ---- Base64 Encoding/Decoding Table --- */
-const char Curl_base64encdec[]=
+const char curlx_base64encdec[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /* The Base 64 encoding with a URL and filename safe alphabet, RFC 4648
    section 5 */
-static const char base64url[]=
+static const char base64url[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-static const unsigned char decodetable[] =
-{ 62, 255, 255, 255, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 255, 255, 255,
-  255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-  17, 18, 19, 20, 21, 22, 23, 24, 25, 255, 255, 255, 255, 255, 255, 26, 27, 28,
-  29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-  48, 49, 50, 51 };
+static const unsigned char decodetable[256] = {
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 62,   0xff, 0xff, 0xff, 63,
+  52,   53,   54,   55,   56,   57,   58,   59,
+  60,   61,   0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0,    1,    2,    3,    4,    5,    6,
+  7,    8,    9,    10,   11,   12,   13,   14,
+  15,   16,   17,   18,   19,   20,   21,   22,
+  23,   24,   25,   0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 26,   27,   28,   29,   30,   31,   32,
+  33,   34,   35,   36,   37,   38,   39,   40,
+  41,   42,   43,   44,   45,   46,   47,   48,
+  49,   50,   51,   0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+};
 /*
  * curlx_base64_decode()
  *
- * Given a base64 NUL-terminated string at src, decode it and return a
- * pointer in *outptr to a newly allocated memory area holding decoded
- * data. Size of decoded data is returned in variable pointed by outlen.
+ * Given a base64 null-terminated string at src, decode it and return a
+ * pointer in *outptr to a newly allocated memory area holding decoded data.
+ * Size of decoded data is returned in variable pointed by outlen.
  *
  * Returns CURLE_OK on success, otherwise specific error code. Function
  * output shall not be considered valid unless CURLE_OK is returned.
@@ -73,7 +86,7 @@ static const unsigned char decodetable[] =
  * @unittest: 1302
  */
 CURLcode curlx_base64_decode(const char *src,
-                             unsigned char **outptr, size_t *outlen)
+                             uint8_t **outptr, size_t *outlen)
 {
   size_t srclen = 0;
   size_t padding = 0;
@@ -83,7 +96,6 @@ CURLcode curlx_base64_decode(const char *src,
   size_t rawlen = 0;
   unsigned char *pos;
   unsigned char *newstr;
-  unsigned char lookup[256];
 
   *outptr = NULL;
   *outlen = 0;
@@ -110,31 +122,25 @@ CURLcode curlx_base64_decode(const char *src,
   rawlen = (numQuantums * 3) - padding;
 
   /* Allocate our buffer including room for a null-terminator */
-  newstr = malloc(rawlen + 1);
+  newstr = curlx_malloc(rawlen + 1);
   if(!newstr)
     return CURLE_OUT_OF_MEMORY;
 
   pos = newstr;
 
-  memset(lookup, 0xff, sizeof(lookup));
-  memcpy(&lookup['+'], decodetable, sizeof(decodetable));
-
   /* Decode the complete quantums first */
   for(i = 0; i < fullQuantums; i++) {
-    unsigned char val;
-    unsigned int x = 0;
-    int j;
-
-    for(j = 0; j < 4; j++) {
-      val = lookup[(unsigned char)*src++];
-      if(val == 0xff) /* bad symbol */
-        goto bad;
-      x = (x << 6) | val;
-    }
-    pos[2] = x & 0xff;
-    pos[1] = (x >> 8) & 0xff;
-    pos[0] = (x >> 16) & 0xff;
+    unsigned char v0 = decodetable[(unsigned char)src[0]];
+    unsigned char v1 = decodetable[(unsigned char)src[1]];
+    unsigned char v2 = decodetable[(unsigned char)src[2]];
+    unsigned char v3 = decodetable[(unsigned char)src[3]];
+    if((v0 | v1 | v2 | v3) & 0x80)
+      goto bad;
+    pos[0] = (unsigned char)((v0 << 2) | (v1 >> 4));
+    pos[1] = (unsigned char)((v1 << 4) | (v2 >> 2));
+    pos[2] = (unsigned char)((v2 << 6) | v3);
     pos += 3;
+    src += 4;
   }
   if(padding) {
     /* this means either 8 or 16 bits output */
@@ -151,19 +157,19 @@ CURLcode curlx_base64_decode(const char *src,
           goto bad;
       }
       else {
-        val = lookup[(unsigned char)*src++];
+        val = decodetable[(unsigned char)*src++];
         if(val == 0xff) /* bad symbol */
           goto bad;
         x = (x << 6) | val;
       }
     }
     if(padding == 1)
-      pos[1] = (x >> 8) & 0xff;
-    pos[0] = (x >> 16) & 0xff;
+      pos[1] = (unsigned char)((x >> 8) & 0xff);
+    pos[0] = (unsigned char)((x >> 16) & 0xff);
     pos += 3 - padding;
   }
 
-  /* Zero terminate */
+  /* null-terminate */
   *pos = '\0';
 
   /* Return the decoded data */
@@ -172,13 +178,13 @@ CURLcode curlx_base64_decode(const char *src,
 
   return CURLE_OK;
 bad:
-  free(newstr);
+  curlx_free(newstr);
   return CURLE_BAD_CONTENT_ENCODING;
 }
 
 static CURLcode base64_encode(const char *table64,
-                              unsigned char padbyte,
-                              const char *inputbuff, size_t insize,
+                              uint8_t padbyte,
+                              const uint8_t *inputbuff, size_t insize,
                               char **outptr, size_t *outlen)
 {
   char *output;
@@ -189,30 +195,35 @@ static CURLcode base64_encode(const char *table64,
   *outlen = 0;
 
   if(!insize)
-    insize = strlen(inputbuff);
+    return CURLE_OK;
 
-#if SIZEOF_SIZE_T == 4
-  if(insize > UINT_MAX/4)
-    return CURLE_OUT_OF_MEMORY;
-#endif
+  /* safety precaution */
+  DEBUGASSERT(insize <= CURL_MAX_BASE64_INPUT);
+  if(insize > CURL_MAX_BASE64_INPUT)
+    return CURLE_TOO_LARGE;
 
-  base64data = output = malloc((insize + 2) / 3 * 4 + 1);
+  base64data = output = curlx_malloc(((insize + 2) / 3 * 4) + 1);
   if(!output)
     return CURLE_OUT_OF_MEMORY;
 
   while(insize >= 3) {
-    *output++ = table64[ in[0] >> 2 ];
-    *output++ = table64[ ((in[0] & 0x03) << 4) | (in[1] >> 4) ];
-    *output++ = table64[ ((in[1] & 0x0F) << 2) | ((in[2] & 0xC0) >> 6) ];
-    *output++ = table64[ in[2] & 0x3F ];
+    /* Load all three input bytes before storing output, avoiding reloads when
+       the compiler cannot rule out aliasing. Extract four 6-bit indices from
+       the packed value; byte-wise loads avoid alignment and endian issues. */
+    uint32_t bits = ((uint32_t)in[0] << 16) |
+      ((uint32_t)in[1] << 8) | in[2];
+    *output++ = table64[bits >> 18];
+    *output++ = table64[(bits >> 12) & 0x3F];
+    *output++ = table64[(bits >> 6) & 0x3F];
+    *output++ = table64[bits & 0x3F];
     insize -= 3;
     in += 3;
   }
   if(insize) {
     /* this is only one or two bytes now */
-    *output++ = table64[ in[0] >> 2 ];
+    *output++ = table64[in[0] >> 2];
     if(insize == 1) {
-      *output++ = table64[ ((in[0] & 0x03) << 4) ];
+      *output++ = table64[((in[0] & 0x03) << 4)];
       if(padbyte) {
         *output++ = padbyte;
         *output++ = padbyte;
@@ -220,14 +231,14 @@ static CURLcode base64_encode(const char *table64,
     }
     else {
       /* insize == 2 */
-      *output++ = table64[ ((in[0] & 0x03) << 4) | ((in[1] & 0xF0) >> 4) ];
-      *output++ = table64[ ((in[1] & 0x0F) << 2) ];
+      *output++ = table64[((in[0] & 0x03) << 4) | ((in[1] & 0xF0) >> 4)];
+      *output++ = table64[((in[1] & 0x0F) << 2)];
       if(padbyte)
         *output++ = padbyte;
     }
   }
 
-  /* Zero terminate */
+  /* null-terminate */
   *output = '\0';
 
   /* Return the pointer to the new data (allocated memory) */
@@ -247,17 +258,15 @@ static CURLcode base64_encode(const char *table64,
  * encoded data. Size of encoded data is returned in variable pointed by
  * outlen.
  *
- * Input length of 0 indicates input buffer holds a NUL-terminated string.
- *
  * Returns CURLE_OK on success, otherwise specific error code. Function
  * output shall not be considered valid unless CURLE_OK is returned.
  *
  * @unittest: 1302
  */
-CURLcode curlx_base64_encode(const char *inputbuff, size_t insize,
+CURLcode curlx_base64_encode(const uint8_t *inputbuff, size_t insize,
                              char **outptr, size_t *outlen)
 {
-  return base64_encode(Curl_base64encdec, '=',
+  return base64_encode(curlx_base64encdec, '=',
                        inputbuff, insize, outptr, outlen);
 }
 
@@ -269,17 +278,15 @@ CURLcode curlx_base64_encode(const char *inputbuff, size_t insize,
  * encoded data. Size of encoded data is returned in variable pointed by
  * outlen.
  *
- * Input length of 0 indicates input buffer holds a NUL-terminated string.
+ * Input length of 0 indicates input buffer holds a null-terminated string.
  *
  * Returns CURLE_OK on success, otherwise specific error code. Function
  * output shall not be considered valid unless CURLE_OK is returned.
  *
  * @unittest: 1302
  */
-CURLcode curlx_base64url_encode(const char *inputbuff, size_t insize,
+CURLcode curlx_base64url_encode(const uint8_t *inputbuff, size_t insize,
                                 char **outptr, size_t *outlen)
 {
   return base64_encode(base64url, 0, inputbuff, insize, outptr, outlen);
 }
-
-#endif /* no users so disabled */

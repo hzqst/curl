@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -5,8 +6,6 @@ HTTP
 netrc
 </keywords>
 </info>
-#
-# Server-side
 <reply>
 <data>
 HTTP/1.1 200 OK
@@ -20,8 +19,6 @@ Connection: close
 </data>
 </reply>
 
-#
-# Client-side
 <client>
 <server>
 http
@@ -38,10 +35,8 @@ machine %HOSTIP login user2 password passwd2
 </file>
 </client>
 
-#
-# Verify data after the test has been "shot"
 <verify>
-<protocol>
+<protocol crlf="headers">
 GET / HTTP/1.1
 Host: %HOSTIP:%HTTPPORT
 Authorization: Basic %b64[user1:passwd1]b64%

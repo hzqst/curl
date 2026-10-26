@@ -10,8 +10,13 @@
 # might have a problem with that we still deem is fine.
 #
 
-open(S, "<./docs/libcurl/symbols-in-versions")
-    || die "can't find symbols-in-versions";
+use strict;
+use warnings;
+
+my @asyms;
+
+open(S, "<", './docs/libcurl/symbols-in-versions')
+    or die "cannot find symbols-in-versions";
 while(<S>) {
     if(/^([^ ]*) /) {
         push @asyms, $1;
@@ -24,8 +29,8 @@ my @aopts = (
     '--ftp-ssl-reqd', # old alias
     );
 
-open(O, "<./docs/options-in-versions")
-    || die "can't find options-in-versions";
+open(O, "<", './docs/options-in-versions')
+    or die "cannot find options-in-versions";
 while(<O>) {
     chomp;
     if(/^([^ ]+)/) {
@@ -44,8 +49,8 @@ while(<O>) {
 }
 close(O);
 
-open(C, "<./.github/scripts/spellcheck.curl")
-    || die "can't find spellcheck.curl";
+open(C, "<", './.github/scripts/spellcheck.curl')
+    or die "cannot find spellcheck.curl";
 while(<C>) {
     if(/^\#/) {
         next;
@@ -70,7 +75,7 @@ sub process {
     my $sepcount = 0;
     my $out;
     my $line = 0;
-    open(F, "<$f") or die;
+    open(F, "<", $f) or die;
 
     while(<F>) {
         $line++;
@@ -94,9 +99,11 @@ sub process {
         # *italics*
         $l =~ s/\*(\S.*?)\*//g;
 
-        # strip out https URLs, we don't want them spellchecked
+        # strip out https URLs, we do not want them spellchecked
         $l =~ s!https://[a-z0-9\#_/.-]+!!gi;
 
+        # strip links, both name and target
+        $l =~ s/(\[.*?\])\(.*?\)//g;
         $out .= $l;
     }
     close(F);
@@ -108,12 +115,16 @@ sub process {
     map { $out =~ s/\b$_\b//g; } (@syms);
 
     if(!$ignore) {
-        open(O, ">$f") or die;
+        open(O, ">", $f) or die;
         print O $out;
         close(O);
     }
 }
 
-for my $f (@ARGV) {
+my @filemasks = @ARGV;
+open(my $git_ls_files, '-|', 'git', 'ls-files', '--end-of-options', @filemasks) or die "Failed running git ls-files: $!";
+while(my $f = <$git_ls_files>) {
+    chomp $f;
     process($f);
 }
+close $git_ls_files;

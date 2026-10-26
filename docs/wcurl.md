@@ -31,26 +31,29 @@ Added-in: n/a
 **wcurl** is a simple curl wrapper which lets you use curl to download files
 without having to remember any parameters.
 
-Simply call **wcurl** with a list of URLs you want to download and **wcurl**
+Call **wcurl** with a list of URLs you want to download and **wcurl**
 picks sane defaults.
 
 If you need anything more complex, you can provide any of curl's supported
-parameters via the **--curl-options** option. Just beware that you likely
-should be using curl directly if your use case is not covered.
+parameters via the **--curl-options** option. Beware that you likely should
+be using curl directly if your use case is not covered.
 
 By default, **wcurl** does:
 
-## * Percent-encode whitespaces in URLs;
+## * Percent-encode whitespace in URLs;
 
 ## * Download multiple URLs in parallel
     if the installed curl's version is \>= 7.66.0 (--parallel);
+
+## * Use a total number of 5 parallel connections to the same protocol + hostname + port number target
+    if the installed curl's version is \>= 8.16.0 (--parallel-max-host);
 
 ## * Follow redirects;
 
 ## * Automatically choose a filename as output;
 
 ## * Avoid overwriting files
-     if the installed curl's version is \>= 7.83.0 (--no-clobber);
+    if the installed curl's version is \>= 7.83.0 (--no-clobber);
 
 ## * Perform retries;
 
@@ -66,7 +69,7 @@ By default, **wcurl** does:
 ## * Percent-decode the resulting filename;
 
 ## * Use 'index.html' as the default filename
-    if there is none in the URL.
+    if there is none in the URL, or if it is '-'.
 
 # OPTIONS
 
@@ -84,12 +87,12 @@ last value is considered.
 
 ## --no-decode-filename
 
-Don't percent-decode the output filename, even if the percent-encoding in the
-URL was done by **wcurl**, e.g.: The URL contained whitespaces.
+Do not percent-decode the output filename, even if the percent-encoding in the
+URL was done by **wcurl**, e.g.: The URL contained whitespace.
 
 ## --dry-run
 
-Do not actually execute curl, just print what would be invoked.
+Do not actually execute curl, print what would be invoked.
 
 ## -V, \--version
 
@@ -104,10 +107,23 @@ Print help message.
 Any option supported by curl can be set here. This is not used by **wcurl**; it
 is instead forwarded to the curl invocation.
 
+The value is split on whitespace (spaces, tabs and newlines) and each resulting
+word is passed to curl as a separate argument. Quotes and backslashes are not
+interpreted, so an argument containing whitespace cannot be passed this way. For
+example, **--curl-options='-H "Cookie: a=1; b=2"'** passes the four arguments
+`-H`, `"Cookie:`, `a=1;` and `b=2"` to curl, which treats the extra words as
+URLs to download.
+
+To pass arguments that contain whitespace, write them to a curl config file and
+pass it with **--curl-options="--config \<FILE\>"**, or use curl directly.
+
+Everything in \<CURL_OPTIONS\> becomes part of the curl command line, so never
+build it from untrusted input.
+
 # URL
 
 URL to be downloaded. Anything that is not a parameter is considered
-an URL. Whitespaces are percent-encoded and the URL is passed to curl, which
+an URL. Whitespace is percent-encoded and the URL is passed to curl, which
 then performs the parsing. May be specified more than once.
 
 # EXAMPLES
@@ -124,10 +140,16 @@ Download a file passing the **--progress-bar** and **--http2** flags to curl:
 
 **wcurl --curl-options="--progress-bar --http2" example.com/filename.txt**
 
-Resume from an interrupted download (if more options are used, this needs to
-be the last one in the list):
+Resume from an interrupted download. The options necessary to resume the download
+(`--clobber --continue-at -`) must be the **last** options specified in `--curl-options`.
+Note that the only way to resume interrupted downloads is to allow wcurl to overwrite
+the destination file:
 
-**wcurl --curl-options="--continue-at -" example.com/filename.txt**
+**wcurl --curl-options="--clobber --continue-at -" example.com/filename.txt**
+
+Download multiple files without a limit of concurrent connections per host (the default limit is 5):
+
+**wcurl --curl-options="--parallel-max-host 0" example.com/filename1.txt example.com/filename2.txt**
 
 # AUTHORS
 
@@ -138,7 +160,7 @@ be the last one in the list):
 # REPORTING BUGS
 
 If you experience any problems with **wcurl** that you do not experience with
-curl, submit an issue on Github: https://github.com/curl/wcurl
+curl, submit an issue on GitHub: https://github.com/curl/wcurl
 
 # COPYRIGHT
 

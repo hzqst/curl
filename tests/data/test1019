@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -6,15 +7,10 @@ Range
 </keywords>
 </info>
 
-# Server-side
 <reply>
 </reply>
 
-# Client-side
 <client>
-<server>
-none
-</server>
 <features>
 file
 </features>
@@ -30,7 +26,6 @@ X- range on a file:// URL to stdout
 </file>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
 <stdout>
 890

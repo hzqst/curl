@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="US-ASCII"?>
 <testcase>
 <info>
 <keywords>
@@ -6,7 +7,6 @@ RETR
 -z
 </keywords>
 </info>
-# Server-side
 <reply>
 <data>
 this is file contents
@@ -16,7 +16,6 @@ this is file contents
 </mdtm>
 </reply>
 
-# Client-side
 <client>
 <server>
 ftp
@@ -29,12 +28,8 @@ ftp://%HOSTIP:%FTPPORT/blalbla/%TESTNUMBER -z "1 jan 1989"
 </command>
 </client>
 
-# Verify data after the test has been "shot"
 <verify>
-<strip>
-QUIT
-</strip>
-<protocol>
+<protocol crlf="yes">
 USER anonymous
 PASS ftp@example.com
 PWD

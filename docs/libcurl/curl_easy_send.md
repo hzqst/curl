@@ -44,6 +44,8 @@ curl_easy_send(3) does not work on connections that were created without
 this option.
 
 The call returns **CURLE_AGAIN** if it is not possible to send data right now
+and the call should be retried later with the same **buffer**-content and a
+**buflen** no smaller than the original **buflen**.
 - the socket is used in non-blocking mode internally. When **CURLE_AGAIN**
 is returned, use your operating system facilities like *select(2)* to wait
 until the socket is writable. The socket may be obtained using
@@ -62,20 +64,20 @@ int main(void)
 {
   CURL *curl = curl_easy_init();
   if(curl) {
-    CURLcode res;
+    CURLcode result;
     curl_easy_setopt(curl, CURLOPT_URL, "https://example.com");
     /* Do not do the transfer - only connect to host */
     curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 1L);
-    res = curl_easy_perform(curl);
+    result = curl_easy_perform(curl);
 
-    if(res == CURLE_OK) {
+    if(result == CURLE_OK) {
       curl_socket_t sockfd;
       size_t sent;
       /* Extract the socket from the curl handle - we need it for waiting. */
-      res = curl_easy_getinfo(curl, CURLINFO_ACTIVESOCKET, &sockfd);
+      result = curl_easy_getinfo(curl, CURLINFO_ACTIVESOCKET, &sockfd);
 
       /* send data */
-      res = curl_easy_send(curl, "hello", 5, &sent);
+      result = curl_easy_send(curl, "hello", 5, &sent);
     }
   }
 }
@@ -93,6 +95,8 @@ On failure, returns the appropriate error code.
 
 This function may return **CURLE_AGAIN**. In this case, use your operating
 system facilities to wait until the socket is writable, and retry.
+The **buffer** passed to the retry call should hold the _same data_
+as the original one and **buflen** should be _no smaller_ than before.
 
 If there is no socket available to use from the previous transfer, this
 function returns **CURLE_UNSUPPORTED_PROTOCOL**.
